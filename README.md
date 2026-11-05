@@ -2,6 +2,14 @@
 
 Aplicativo para registrar hunts do Tibia, acompanhar lucro e experiência, comparar sessões e compartilhar cards detalhados. O projeto usa React Native com Expo no Android e Electron no desktop Windows.
 
+## Instalar no Windows
+
+Baixe o instalador atualizado na pasta [Instalador](Instalador/README.md) ou clique diretamente:
+
+[**Baixar HuntLog Tibia para Windows (64 bits)**](https://github.com/jpcostadev/huntLog/raw/refs/heads/main/Instalador/HuntLog-Tibia-Setup-latest.exe)
+
+Depois de baixar, abra o arquivo `.exe` e siga as etapas do instalador.
+
 ## Recursos
 
 - Registro, edição, consulta e remoção de hunts.
