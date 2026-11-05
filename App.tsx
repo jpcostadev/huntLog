@@ -4,6 +4,8 @@ import {
   StatusBar, StyleSheet, Text, TextInput, View, Image, useWindowDimensions,
 } from 'react-native';
 import * as Sharing from 'expo-sharing';
+import { File, Paths } from 'expo-file-system';
+import { buildHuntWorkbook } from './src/lib/reportWorkbook';
 import { router } from 'expo-router';
 import { captureRef } from 'react-native-view-shot';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -13,7 +15,7 @@ import type { CharacterInput, CharacterProfile, Hunt, TibiaSession } from './src
 import { parseTibiaSession } from './src/lib/tibiaSessionParser';
 import {
   Activity, AlertCircle, ArrowDownLeft, ArrowUpRight, CalendarDays, Check, ChevronRight, Coins, Crown,
-  Flame, Image as ImageIcon, MapPin, Plus, Search, ScrollText, Share2, Shield, Sparkles,
+  FileSpreadsheet, Flame, Image as ImageIcon, MapPin, Plus, Search, ScrollText, Share2, Shield, Sparkles,
   BarChart3, Eye, List, Pencil, Swords, Timer, Trash2, TrendingUp, Trophy, UserRound, X, Zap,
 } from 'lucide-react-native';
 
@@ -71,6 +73,8 @@ export function AppScreen({tab}: {tab: Tab}) {
   const [sessionText, setSessionText] = useState('');
   const [importedSession, setImportedSession] = useState<TibiaSession | null>(null);
   const [importError, setImportError] = useState('');
+  const [reportExporting, setReportExporting] = useState(false);
+  const [reportExportError, setReportExportError] = useState('');
   const { width: screenWidth } = useWindowDimensions();
   const desktop = Platform.OS === 'web' && screenWidth >= 900;
   const cardRef = useRef<React.ElementRef<typeof View>>(null);
@@ -185,6 +189,47 @@ export function AppScreen({tab}: {tab: Tab}) {
       setToast(`Sessão lida · ${parsed.details.monsters.length} monstros · ${parsed.details.items.length} itens`);
     } catch (error) {
       setImportError(error instanceof Error ? error.message : 'Não foi possível ler a sessão.');
+    }
+  };
+  const exportReport = async () => {
+    if (reportExporting) return;
+    if (!filtered.length) {
+      setReportExportError('Não há hunts no período selecionado para exportar.');
+      return;
+    }
+    setReportExporting(true);
+    setReportExportError('');
+    try {
+      const fileName = `huntlog-relatorio-${today()}.xlsx`;
+      const bytes = buildHuntWorkbook(filtered);
+      if (Platform.OS === 'web') {
+        const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        setToast('Relatório Excel baixado.');
+        return;
+      }
+      if (!(await Sharing.isAvailableAsync())) throw new Error('O compartilhamento de arquivos não está disponível neste aparelho.');
+      const file = new File(Paths.cache, fileName);
+      file.create({ overwrite: true });
+      await file.write(bytes);
+      await Sharing.shareAsync(file.uri, {
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        dialogTitle: 'Exportar relatório de hunts',
+      });
+      setToast('Arquivo Excel pronto para salvar ou compartilhar.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Tente novamente.';
+      if (Platform.OS === 'web') setReportExportError(`Não consegui exportar o Excel: ${message}`);
+      else Alert.alert('Falha ao exportar relatório', message);
+    } finally {
+      setReportExporting(false);
     }
   };
   const remove = (h: Hunt) => {
@@ -317,6 +362,8 @@ export function AppScreen({tab}: {tab: Tab}) {
   const Reports = () => <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
     <Header eyebrow="NÚMEROS DA SUA JORNADA" title="Relatórios" right={<View style={s.roundIcon}><ScrollText size={19} color={C.cyan}/></View>} />
     <View style={s.periods}>{(['7d','30d','all'] as const).map((p,i)=><Pressable key={p} style={[s.period,period===p&&s.periodActive]} onPress={()=>setPeriod(p)}><Text style={[s.periodText,period===p&&s.periodTextActive]}>{['7 DIAS','30 DIAS','TUDO'][i]}</Text></Pressable>)}</View>
+    <Pressable disabled={reportExporting||!filtered.length} onPress={exportReport} style={[s.reportExportButton,(!filtered.length||reportExporting)&&s.reportExportButtonDisabled]}><FileSpreadsheet size={17} color={C.lime}/><Text style={s.reportExportText}>{reportExporting?'GERANDO ARQUIVO…':'EXPORTAR RELATÓRIO EXCEL (.XLSX)'}</Text></Pressable>
+    {reportExportError?<Text style={s.reportExportError}>{reportExportError}</Text>:null}
     <View style={s.reportHero}><View><Text style={s.reportLabel}>LUCRO LÍQUIDO</Text><Text style={s.reportProfit}>{money(reportTotals.profit)}</Text><View style={s.profitTag}><ArrowUpRight size={13} color={C.green}/><Text style={s.profitTagText}>NO PERÍODO SELECIONADO</Text></View></View><View style={s.reportHeroIcon}><TrendingUp size={22} color={C.green}/></View></View>
     <View style={s.reportGrid}><View style={s.reportTile}><Zap size={16} color={C.cyan}/><Text style={s.tileLabel}>XP TOTAL</Text><Text style={s.tileValue}>{n(reportTotals.xp)}</Text></View><View style={s.reportTile}><Coins size={16} color={C.orange}/><Text style={s.tileLabel}>LOOT BRUTO</Text><Text style={s.tileValue}>{money(reportTotals.loot)}</Text></View><View style={s.reportTile}><Swords size={16} color={C.lime}/><Text style={s.tileLabel}>SESSÕES</Text><Text style={s.tileValue}>{filtered.length}</Text></View><View style={s.reportTile}><Timer size={16} color={C.cyan}/><Text style={s.tileLabel}>TEMPO DE HUNT</Text><Text style={s.tileValue}>{Math.floor(reportTotals.minutes/60)}h {reportTotals.minutes%60}m</Text></View></View>
     <View style={s.sectionHead}><Text style={s.sectionTitle}>XP NOS ÚLTIMOS 7 DIAS</Text><Text style={s.chartLegend}><View style={s.legendDot}/> XP</Text></View>
@@ -404,7 +451,7 @@ export function AppScreen({tab}: {tab: Tab}) {
     <Modal visible={formOpen} animationType="slide" transparent onRequestClose={()=>setFormOpen(false)}><View style={[s.modalShade,desktop&&s.modalShadeDesktop]}><KeyboardAvoidingView behavior={Platform.OS==='ios'?'padding':'height'} style={[s.modalWrap,desktop&&s.modalWrapDesktop]}><View style={[s.modal,desktop&&s.modalDesktop]}>
       <View style={s.modalHeader}><View><Text style={s.modalEyebrow}>SEU DIÁRIO DE AVENTURAS</Text><Text style={s.modalTitle}>{editing?'Editar hunt':'Nova hunt'}</Text></View><Pressable style={s.closeButton} onPress={()=>setFormOpen(false)}><X size={19} color={C.muted}/></Pressable></View>
       <ScrollView style={s.formScroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{paddingBottom:18}}>
-        <View style={s.importPanel}><Text style={s.formSection}>IMPORTAR SESSÃO DO TIBIA</Text><Text style={s.importHelp}>Copie o texto “Session data” do cliente e cole aqui. XP, loot, supplies, duração, dano, cura, monstros e itens serão preenchidos.</Text><TextInput value={sessionText} onChangeText={setSessionText} placeholder={'Session data: From ...\nSession: 00:54h\nXP Gain: 761,309\n...'} placeholderTextColor="#64747D" multiline textAlignVertical="top" autoCapitalize="none" style={s.sessionInput}/><Pressable onPress={importSession} style={s.importButton}><ScrollText size={15} color={C.bg}/><Text style={s.importButtonText}>LER E PREENCHER HUNT</Text></Pressable>{importError? <Text style={s.formError}>{importError}</Text>:null}{importedSession&&<View style={s.importSummary}><Text style={s.importSummaryTitle}>SESSÃO IMPORTADA · {importedSession.startedAt}–{importedSession.endedAt}</Text><Text style={s.importSummaryText}>{importedSession.monsters.length} tipos de monstro · {importedSession.items.length} tipos de item · {n(importedSession.damage)} dano · {n(importedSession.healing)} cura</Text><Text numberOfLines={2} style={s.importSummaryText}>{importedSession.monsters.slice(0,3).map(e=>`${e.count}× ${e.name}`).join('  ·  ') || 'Sem lista de monstros'}</Text><Text numberOfLines={2} style={s.importSummaryText}>{importedSession.items.slice(0,3).map(e=>`${e.count}× ${e.name}`).join('  ·  ') || 'Sem lista de itens'}</Text></View>}</View>
+        <View style={s.importPanel}><Text style={s.formSection}>IMPORTAR SESSÃO DO TIBIA</Text><Text style={s.importHelp}>Copie o texto “Session data” do cliente e cole aqui. XP, loot, supplies, duração, dano, cura, monstros e itens serão preenchidos.</Text><TextInput value={sessionText} onChangeText={setSessionText} placeholder={'Session data: From ...\nSession: 00:54h\nXP Gain: 761,309\n...'} placeholderTextColor="#64747D" multiline textAlignVertical="top" autoCapitalize="none" style={s.sessionInput}/>{sessionText.trim()?<Text style={[s.importInputHint,sessionText.match(/^\s*Session data:\s*From/im)?s.importInputHintReady:s.importInputHintMissing]}>{sessionText.trim().split(/\r?\n/).length} linhas coladas · {sessionText.match(/^\s*Session data:\s*From/im)?'cabeçalho Session data encontrado':'cabeçalho ausente; copie desde a primeira linha da sessão'}</Text>:null}<Pressable onPress={importSession} style={s.importButton}><ScrollText size={15} color={C.bg}/><Text style={s.importButtonText}>LER E PREENCHER HUNT</Text></Pressable>{importError? <Text style={s.formError}>{importError}</Text>:null}{importedSession&&<View style={s.importSummary}><Text style={s.importSummaryTitle}>SESSÃO IMPORTADA · {importedSession.startedAt}–{importedSession.endedAt}</Text><Text style={s.importSummaryText}>{importedSession.monsters.length} tipos de monstro · {importedSession.items.length} tipos de item · {n(importedSession.damage)} dano · {n(importedSession.healing)} cura</Text><Text numberOfLines={2} style={s.importSummaryText}>{importedSession.monsters.slice(0,3).map(e=>`${e.count}× ${e.name}`).join('  ·  ') || 'Sem lista de monstros'}</Text><Text numberOfLines={2} style={s.importSummaryText}>{importedSession.items.slice(0,3).map(e=>`${e.count}× ${e.name}`).join('  ·  ') || 'Sem lista de itens'}</Text></View>}</View>
         <Text style={s.formSection}>PERSONAGEM</Text>
         {characters.length>0&&<>
           <Text style={s.fieldHint}>TOQUE EM UM PERSONAGEM SALVO PARA PREENCHER</Text>
@@ -452,6 +499,13 @@ function Field({label,value,onChange,placeholder,keyboard,width}: {label:string;
 
 const s = StyleSheet.create({
   mobileShell:{flex:1,minWidth:0,width:'100%'},
+  reportExportButton:{minHeight:46,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:9,paddingHorizontal:12,marginTop:-5,marginBottom:14,borderRadius:12,borderWidth:1,borderColor:'#536B3E',backgroundColor:'#1B2A22'},
+  reportExportButtonDisabled:{opacity:.48},
+  reportExportText:{color:C.lime,fontSize:10,fontWeight:'900',letterSpacing:.45},
+  reportExportError:{color:C.red,fontSize:10,lineHeight:15,marginTop:-7,marginBottom:12},
+  importInputHint:{fontSize:8,lineHeight:12,marginTop:5,marginBottom:2},
+  importInputHintReady:{color:C.green},
+  importInputHintMissing:{color:C.orange},
   huntLibraryIntro:{padding:14,marginBottom:13,borderRadius:14,borderWidth:1,borderColor:C.line,backgroundColor:C.panel},huntLibraryTitle:{color:C.text,fontSize:13,fontWeight:'900'},huntLibrarySubtitle:{color:C.muted,fontSize:10,lineHeight:15,marginTop:4},sortHeader:{gap:8,marginBottom:10},sortChoices:{flexDirection:'row',flexWrap:'wrap',gap:6},sortChip:{minHeight:31,paddingHorizontal:11,borderRadius:9,alignItems:'center',justifyContent:'center',backgroundColor:C.panel,borderWidth:1,borderColor:C.line},sortChipActive:{backgroundColor:'#263527',borderColor:'#718E4B'},sortChipText:{color:C.muted,fontSize:8,fontWeight:'900',letterSpacing:.45},sortChipTextActive:{color:C.lime},performanceIntro:{color:C.muted,fontSize:11,lineHeight:17,marginTop:-8,marginBottom:15},metricPicker:{flexDirection:'row',flexWrap:'wrap',gap:7,marginTop:3,marginBottom:13},metricChip:{flexGrow:1},performanceSummary:{padding:15,marginBottom:12,borderRadius:15,borderWidth:1,borderColor:'#37534A',backgroundColor:'#13241F'},averageLine:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},averageLabel:{fontSize:8,fontWeight:'900',letterSpacing:.8,color:'#A2B5AA'},averageValue:{fontSize:17,fontWeight:'900',color:C.green},averageHint:{fontSize:9,color:'#91A39B',marginTop:6},performanceHighlights:{flexDirection:'row',gap:9,marginBottom:18},performanceHighlight:{flex:1,minWidth:0,padding:12,borderRadius:14,borderWidth:1},bestHighlight:{backgroundColor:'#1A2A20',borderColor:'#506B3C'},worstHighlight:{backgroundColor:'#2A211C',borderColor:'#644936'},highlightHeader:{flexDirection:'row',alignItems:'center',gap:6,marginBottom:10},highlightEyebrow:{fontSize:8,fontWeight:'900',letterSpacing:.6,color:C.text},highlightLocation:{fontSize:12,fontWeight:'900',color:C.text},highlightMeta:{fontSize:8,color:C.muted,marginTop:4},highlightValue:{fontSize:15,fontWeight:'900',color:C.lime,marginTop:12},highlightCompare:{fontSize:8,color:'#A8B7AE',marginTop:4},performanceListHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginBottom:9},rankRow:{flexDirection:'row',gap:10,padding:12,marginBottom:8,borderRadius:13,borderWidth:1,borderColor:C.line,backgroundColor:C.panel},rankNumber:{width:26,height:26,borderRadius:9,alignItems:'center',justifyContent:'center',backgroundColor:'#1A2731'},rankNumberBest:{backgroundColor:'#3A4B25'},rankNumberText:{color:C.muted,fontSize:11,fontWeight:'900'},rankNumberTextBest:{color:C.lime},rankBody:{flex:1,minWidth:0},rankTitleLine:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:8},rankTitle:{flex:1,color:C.text,fontSize:11,fontWeight:'800'},rankValue:{color:C.green,fontSize:10,fontWeight:'900'},rankMeta:{color:C.muted,fontSize:8,marginTop:4},rankTrack:{height:5,overflow:'hidden',borderRadius:4,backgroundColor:'#26333A',marginTop:9},rankFill:{height:'100%',borderRadius:4,backgroundColor:C.green},rankFillLow:{backgroundColor:C.orange},rankCompare:{fontSize:8,fontWeight:'800',marginTop:5},rankCompareGood:{color:C.green},rankCompareLow:{color:C.orange},
   detailsShade:{flex:1,justifyContent:'flex-end',backgroundColor:'#000B'},detailsShadeDesktop:{justifyContent:'center',padding:22},detailsModal:{width:'100%',maxHeight:'92%',padding:18,paddingBottom:12,borderTopLeftRadius:23,borderTopRightRadius:23,borderWidth:1,borderColor:'#30414A',backgroundColor:'#0D151E'},detailsModalDesktop:{maxWidth:700,alignSelf:'center',borderRadius:21},detailsHeader:{flexDirection:'row',alignItems:'center',gap:12,marginBottom:13},detailsTitle:{fontSize:21,fontWeight:'900',color:C.text},detailsSubtitle:{fontSize:10,fontWeight:'700',color:C.lime,marginTop:4},detailsScroll:{flexShrink:1},detailsStats:{flexDirection:'row',flexWrap:'wrap',gap:8,marginBottom:13},detailsStat:{width:'31.5%',minHeight:54,padding:9,borderRadius:10,borderWidth:1,borderColor:C.line,backgroundColor:C.panel},detailsStatLabel:{color:C.muted,fontSize:7,fontWeight:'900',letterSpacing:.7},detailsStatValue:{fontSize:11,fontWeight:'900',color:C.text,marginTop:5},detailsSessionHeader:{gap:5,marginTop:3,marginBottom:11},detailsTimes:{color:'#AABABD',fontSize:9,lineHeight:14},detailsListPanel:{padding:12,marginBottom:10,borderRadius:12,borderWidth:1,borderColor:'#2D4248',backgroundColor:'#101D24'},detailsEntityRow:{minHeight:27,flexDirection:'row',alignItems:'center',gap:10,borderBottomWidth:1,borderColor:'#FFFFFF0A'},detailsCount:{minWidth:55,color:C.cyan,fontSize:10,fontWeight:'900',fontVariant:['tabular-nums']},detailsEntityName:{flex:1,color:'#E0E7E8',fontSize:11,lineHeight:16},detailsEditButton:{height:46,marginTop:12,borderRadius:12,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:8,backgroundColor:C.lime},detailsEditText:{fontSize:10,fontWeight:'900',letterSpacing:.8,color:C.bg},
   feedbackShade:{flex:1,backgroundColor:'#000B',alignItems:'center',justifyContent:'center',padding:24},feedbackCard:{width:'100%',maxWidth:380,padding:24,borderRadius:20,alignItems:'center',backgroundColor:'#111C27',borderWidth:1,borderColor:'#35434D',shadowColor:'#000',shadowOpacity:.35,shadowRadius:22,elevation:16},feedbackCardDesktop:{maxWidth:440},feedbackIcon:{width:54,height:54,borderRadius:18,alignItems:'center',justifyContent:'center',backgroundColor:'#FF75861A',marginBottom:16},feedbackTitle:{fontSize:18,fontWeight:'800',color:C.text,textAlign:'center',marginBottom:10},feedbackMessage:{fontSize:15,lineHeight:22,color:'#D7E0E4',textAlign:'center',marginBottom:22},feedbackButton:{minHeight:46,minWidth:130,paddingHorizontal:22,borderRadius:12,alignItems:'center',justifyContent:'center',backgroundColor:C.lime},feedbackButtonText:{fontSize:12,fontWeight:'900',letterSpacing:.8,color:C.bg},

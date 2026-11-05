@@ -18,6 +18,7 @@ Para instalar no Android, baixe o [APK mais recente](https://github.com/jpcostad
 - Perfil de personagem principal com nome, vocação e level sugeridos nos novos registros.
 - Importação do texto `Session data` copiado do cliente do Tibia, incluindo horários, XP, loot, supplies, balance, dano, cura, monstros e itens.
 - Abas para Minhas Hunts, Desempenho, Relatórios, Compartilhar e Perfil.
+- Exportação do relatório filtrado em Excel (`.xlsx`), com abas de resumo, hunts, monstros e itens, no Android e no desktop.
 - Busca, filtros por período/data e ordenação por lucro, XP e XP por hora.
 - Comparação de desempenho com destaques da melhor e da pior sessão e média do filtro atual.
 - Card PNG de compartilhamento com os detalhes importados e crédito a Fallz Developer.
@@ -79,7 +80,7 @@ npm run desktop:release
 O instalador aparece em:
 
 ```text
-out/desktop/HuntLog-Tibia-Setup-1.0.0-x64.exe
+out/desktop/HuntLog-Tibia-Setup-1.0.2-x64.exe
 ```
 
 O instalador atual não é assinado com certificado de código; o Windows pode mostrar o aviso de publicador desconhecido.
