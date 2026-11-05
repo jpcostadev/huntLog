@@ -49,6 +49,7 @@ export function AppScreen({tab}: {tab: Tab}) {
   const [formOpen, setFormOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
+  const [formErrorTitle, setFormErrorTitle] = useState('Confira os dados da hunt');
   const [editing, setEditing] = useState<Hunt | null>(null);
   const [period, setPeriod] = useState<'7d'|'30d'|'all'>('30d');
   const [selected, setSelected] = useState<number | null>(null);
@@ -131,6 +132,7 @@ export function AppScreen({tab}: {tab: Tab}) {
     const character = form.character.trim(), location = form.location.trim();
     const date = new Date(`${form.date}T00:00:00`);
     if (!character || !location || !/^\d{4}-\d{2}-\d{2}$/.test(form.date) || Number.isNaN(date.getTime())) {
+      setFormErrorTitle('Dados obrigatórios');
       setFormError('Preencha personagem, local e uma data válida.');
       return;
     }
@@ -148,6 +150,7 @@ export function AppScreen({tab}: {tab: Tab}) {
       setToast(editing ? 'Hunt atualizada' : 'Hunt salva no grimório');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Erro inesperado ao salvar.';
+      setFormErrorTitle('Não foi possível salvar a hunt');
       setFormError(`Não foi possível salvar: ${message}`);
     } finally {
       setSaving(false);
@@ -221,11 +224,28 @@ export function AppScreen({tab}: {tab: Tab}) {
   const shareCard = async () => {
     if (!selectedHunt || !cardRef.current) return;
     try {
-      const uri = await captureRef(cardRef, { format:'png', quality:1, result:'tmpfile' });
+      const uri = await captureRef(cardRef, { format:'png', quality:1, result:Platform.OS==='web'?'data-uri':'tmpfile' });
+      if (Platform.OS === 'web') {
+        const filePart = selectedHunt.location.normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]+/g,'-').replace(/^-|-$/g,'').toLowerCase() || 'hunt';
+        const link = document.createElement('a');
+        link.href = uri;
+        link.download = `huntlog-${filePart}-${selectedHunt.date}.png`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setToast('Imagem PNG baixada. Anexe o arquivo no WhatsApp.');
+        return;
+      }
       const available = await Sharing.isAvailableAsync();
       if (!available) { Alert.alert('Compartilhamento indisponível', 'Este dispositivo não oferece compartilhamento de arquivos.'); return; }
       await Sharing.shareAsync(uri, { mimeType:'image/png', dialogTitle:'Compartilhar hunt' });
-    } catch { Alert.alert('Não foi possível gerar a imagem', 'Tente novamente em instantes.'); }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Tente novamente em instantes.';
+      if (Platform.OS === 'web') {
+        setFormErrorTitle('Não foi possível gerar a imagem PNG');
+        setFormError(message);
+      } else Alert.alert('Não foi possível gerar a imagem', message);
+    }
   };
 
   const Header = ({eyebrow, title, right}: {eyebrow:string; title:string; right?:React.ReactNode}) => <View style={s.header}><View><Text style={s.eyebrow}>{eyebrow}</Text><Text style={s.title}>{title}</Text></View>{right}</View>;
@@ -331,7 +351,7 @@ export function AppScreen({tab}: {tab: Tab}) {
         </>}
         <View style={[s.cardRule,s.creditRule]}/><View style={s.cardFooter}><Text style={s.cardFooterText}>HUNT REGISTRADA NO HUNTLOG</Text><Flame size={14} color={C.orange}/></View><Text style={s.cardCredit}>DESENVOLVIDO POR <Text style={s.cardCreditName}>FALLZ DEVELOPER</Text></Text>
       </View>}
-      {selectedHunt ? <><Pressable style={s.shareButton} onPress={shareCard}><LinearGradient colors={[C.lime,'#9FDF4E']} style={s.bigAddGradient}><ImageIcon size={18} color={C.bg}/><Text style={s.bigAddText}>GERAR E COMPARTILHAR IMAGEM</Text><Share2 size={17} color={C.bg}/></LinearGradient></Pressable><Text style={s.shareFootnote}>PNG · CARD PRONTO PARA WHATSAPP, DISCORD E INSTAGRAM</Text></> : <Text style={s.shareFootnote}>TOQUE EM UMA HUNT DA LISTA PARA ABRIR O CARD</Text>}
+      {selectedHunt ? <><Pressable style={s.shareButton} onPress={shareCard}><LinearGradient colors={[C.lime,'#9FDF4E']} style={s.bigAddGradient}><ImageIcon size={18} color={C.bg}/><Text style={s.bigAddText}>{desktop?'BAIXAR IMAGEM PNG':'GERAR E COMPARTILHAR IMAGEM'}</Text><Share2 size={17} color={C.bg}/></LinearGradient></Pressable><Text style={s.shareFootnote}>{desktop?'PNG BAIXADO EM DOWNLOADS · PRONTO PARA ANEXAR NO WHATSAPP':'PNG · CARD PRONTO PARA WHATSAPP, DISCORD E INSTAGRAM'}</Text></> : <Text style={s.shareFootnote}>TOQUE EM UMA HUNT DA LISTA PARA ABRIR O CARD</Text>}
     </> : <View style={s.empty}><View style={s.emptyIcon}><ImageIcon size={23} color={C.muted}/></View><Text style={s.emptyTitle}>Nenhuma hunt para compartilhar</Text><Text style={s.emptyText}>Registre uma sessão para gerar seu primeiro card.</Text><Pressable style={s.emptyButton} onPress={openNew}><Plus size={15} color={C.bg}/><Text style={s.emptyButtonText}>REGISTRAR HUNT</Text></Pressable></View>}
   </ScrollView>;
 
@@ -414,7 +434,7 @@ export function AppScreen({tab}: {tab: Tab}) {
       <View style={s.feedbackShade}>
         <View style={[s.feedbackCard,desktop&&s.feedbackCardDesktop]}>
           <View style={s.feedbackIcon}><AlertCircle size={25} color={C.red}/></View>
-          <Text style={s.feedbackTitle}>Confira os dados da hunt</Text>
+          <Text style={s.feedbackTitle}>{formErrorTitle}</Text>
           <Text accessibilityRole="alert" style={s.feedbackMessage}>{formError}</Text>
           <Pressable accessibilityRole="button" onPress={()=>setFormError('')} style={s.feedbackButton}>
             <Text style={s.feedbackButtonText}>ENTENDI</Text>
