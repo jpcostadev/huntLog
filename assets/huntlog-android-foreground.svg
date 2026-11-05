@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="shield" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#263D30"/><stop offset=".52" stop-color="#142720"/><stop offset="1" stop-color="#0B1719"/></linearGradient>
+    <linearGradient id="lime" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#E0FF92"/><stop offset=".48" stop-color="#B9EA5F"/><stop offset="1" stop-color="#86BC38"/></linearGradient>
+    <linearGradient id="steel" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#F5FFE7"/><stop offset=".42" stop-color="#B9D9B2"/><stop offset="1" stop-color="#668A67"/></linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#FFE2A0"/><stop offset=".5" stop-color="#E9AE4F"/><stop offset="1" stop-color="#A8632C"/></linearGradient>
+  </defs>
+  <g transform="translate(92 92) scale(.82)">
+    <path d="M512 139 777 242v261c0 192-109 310-265 383-156-73-265-191-265-383V242z" fill="url(#shield)" stroke="url(#lime)" stroke-width="17" stroke-linejoin="round"/>
+    <path d="M512 176 741 265v236c0 168-91 270-229 340-138-70-229-172-229-340V265z" fill="none" stroke="#E5F9B8" stroke-width="3" opacity=".5" stroke-linejoin="round"/>
+    <path d="M512 250 605 580 512 644 419 580z" fill="url(#steel)" stroke="url(#lime)" stroke-width="11" stroke-linejoin="round"/>
+    <path d="M512 279v333" stroke="#FFFFFF" stroke-width="7" opacity=".7" stroke-linecap="round"/>
+    <path d="M356 574 668 574l51 48-207 25-207-25z" fill="url(#gold)" stroke="#FFE8B4" stroke-width="8" stroke-linejoin="round"/>
+    <path d="M492 640h40v135l-20 23-20-23z" fill="url(#gold)" stroke="#FFE8B4" stroke-width="7" stroke-linejoin="round"/>
+    <path d="M498 660h28M498 681h28M498 702h28M498 723h28" stroke="#8B542D" stroke-width="6" stroke-linecap="round" opacity=".75"/>
+    <circle cx="512" cy="798" r="29" fill="url(#gold)" stroke="#FFE8B4" stroke-width="8"/>
+    <circle cx="512" cy="798" r="8" fill="#55341F" opacity=".72"/>
+    <path d="M512 211l14 24 27 5-19 19 4 27-26-13-26 13 4-27-19-19 27-5z" fill="url(#lime)" stroke="#F0FFD1" stroke-width="5" stroke-linejoin="round"/>
+  </g>
+</svg>

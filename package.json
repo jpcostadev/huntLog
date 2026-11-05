@@ -1,0 +1,51 @@
+{
+  "name": "huntlog-tibia",
+  "productName": "HuntLog Tibia",
+  "version": "1.0.0",
+  "author": "Fallz Developer",
+  "description": "Diário de hunts do Tibia com importação de sessões.",
+  "main": "expo-router/entry",
+  "dependencies": {
+    "expo": "~58.0.23",
+    "expo-constants": "~58.0.15",
+    "expo-file-system": "~58.0.13",
+    "expo-linear-gradient": "~58.0.3",
+    "expo-linking": "~58.0.16",
+    "expo-router": "~58.0.30",
+    "expo-sharing": "~58.0.22",
+    "expo-sqlite": "~58.0.15",
+    "expo-status-bar": "~58.0.4",
+    "lucide-react-native": "^1.69.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-native": "0.88.1",
+    "react-native-gesture-handler": "~3.3.0",
+    "react-native-safe-area-context": "~5.11.1",
+    "react-native-screens": "~4.30.1",
+    "react-native-svg": "15.16.0",
+    "react-native-view-shot": "6.1.1",
+    "react-native-web": "^0.21.4"
+  },
+  "devDependencies": {
+    "@types/react": "~19.3.0",
+    "concurrently": "^10.0.6",
+    "electron": "^44.10.2",
+    "electron-builder": "^26.18.0",
+    "eslint": "^9.0.0",
+    "eslint-config-expo": "~58.0.4",
+    "png-to-ico": "^3.0.2",
+    "typescript": "~6.0.3",
+    "wait-on": "^9.5.1"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "desktop:dev": "concurrently -k \"expo start --web --port 8091\" \"wait-on http://localhost:8091 && electron desktop/main.cjs\"",
+    "desktop:export": "expo export --platform web --output-dir desktop/web-dist",
+    "desktop:release": "node desktop/make-icon.mjs && npm run desktop:export && electron-builder --projectDir desktop --win nsis --x64",
+    "lint": "eslint App.tsx src/app src/lib"
+  },
+  "private": true
+}

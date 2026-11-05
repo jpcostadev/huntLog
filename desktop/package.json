@@ -1,0 +1,28 @@
+{
+  "name": "huntlog-tibia-desktop",
+  "productName": "HuntLog Tibia",
+  "version": "1.0.0",
+  "author": "Fallz Developer",
+  "description": "Diário de hunts do Tibia com importação de sessões.",
+  "main": "main.cjs",
+  "private": true,
+  "build": {
+    "appId": "com.huntlog.tibia.desktop",
+    "electronVersion": "44.10.2",
+    "directories": { "output": "../out/desktop" },
+    "files": ["main.cjs", "web-dist/**/*", "package.json"],
+    "win": {
+      "target": ["nsis"],
+      "icon": "huntlog.ico",
+      "artifactName": "HuntLog-Tibia-Setup-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "HuntLog Tibia"
+    }
+  }
+}

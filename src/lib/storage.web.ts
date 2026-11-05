@@ -1,0 +1,105 @@
+import type { CharacterInput, CharacterProfile, Hunt, HuntData, HuntInput } from './models';
+
+const STORAGE_KEY = 'huntlog.local.v1';
+type StoredData = { hunts: Hunt[]; characters: CharacterProfile[] };
+
+function read(): StoredData {
+  if (typeof localStorage === 'undefined') return { hunts: [], characters: [] };
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return { hunts: [], characters: [] };
+  try {
+    const parsed = JSON.parse(raw) as Partial<StoredData>;
+    return { hunts: (parsed.hunts ?? []).map((hunt) => ({ ...hunt, session: hunt.session ?? null })), characters: parsed.characters ?? [] };
+  } catch {
+    return { hunts: [], characters: [] };
+  }
+}
+
+function write(data: StoredData) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+function refreshProfiles(hunts: Hunt[], profiles: CharacterProfile[]): CharacterProfile[] {
+  const byName = new Map(profiles.map((profile) => [profile.name.toLowerCase(), profile]));
+  for (const hunt of hunts) {
+    const key = hunt.character.toLowerCase();
+    const previous = byName.get(key);
+    byName.set(key, {
+      name: hunt.character,
+      vocation: hunt.vocation,
+      level: Math.max(previous?.level ?? 0, hunt.level),
+      isPrimary: previous?.isPrimary ?? false,
+      registeredXp: (previous?.registeredXp ?? 0) + hunt.xp,
+    });
+  }
+  // Profiles read from storage already contain cumulative XP. Recompute it from sessions.
+  for (const profile of byName.values()) {
+    profile.registeredXp = hunts
+      .filter((hunt) => hunt.character.toLowerCase() === profile.name.toLowerCase())
+      .reduce((sum, hunt) => sum + hunt.xp, 0);
+  }
+  return [...byName.values()].sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary) || a.name.localeCompare(b.name));
+}
+
+export async function loadHuntData(): Promise<HuntData> {
+  const data = read();
+  const characters = refreshProfiles(data.hunts, data.characters);
+  write({ ...data, characters });
+  return { hunts: [...data.hunts].sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id), characters };
+}
+
+export async function saveHunt(input: HuntInput, id: number | null, makePrimary: boolean) {
+  const data = read();
+  const hunts = [...data.hunts];
+  if (id === null) hunts.push({ ...input, id: Date.now() });
+  else {
+    const index = hunts.findIndex((hunt) => hunt.id === id);
+    if (index < 0) throw new Error('A hunt que você está editando não existe mais.');
+    hunts[index] = { ...input, id };
+  }
+
+  const profiles = refreshProfiles(hunts, data.characters);
+  const target = profiles.find((profile) => profile.name.toLowerCase() === input.character.toLowerCase());
+  if (target) {
+    target.name = input.character;
+    target.vocation = input.vocation;
+    target.level = Math.max(target.level, input.level);
+    if (makePrimary) {
+      for (const profile of profiles) profile.isPrimary = profile.name.toLowerCase() === input.character.toLowerCase();
+    }
+  }
+  write({ hunts, characters: profiles });
+}
+
+export async function setPrimaryCharacter(name: string) {
+  const data = read();
+  const characters = refreshProfiles(data.hunts, data.characters).map((profile) => ({
+    ...profile,
+    isPrimary: profile.name.toLowerCase() === name.toLowerCase(),
+  }));
+  write({ ...data, characters });
+}
+
+export async function saveCharacter(input: CharacterInput) {
+  const data = read();
+  const profiles = refreshProfiles(data.hunts, data.characters);
+  const existing = profiles.find((profile) => profile.name.toLowerCase() === input.name.trim().toLowerCase());
+  const saved: CharacterProfile = {
+    name: input.name.trim(),
+    vocation: input.vocation,
+    level: Math.max(existing?.level ?? 0, input.level),
+    isPrimary: input.isPrimary,
+    registeredXp: existing?.registeredXp ?? 0,
+  };
+  const characters = [...profiles.filter((profile) => profile.name.toLowerCase() !== saved.name.toLowerCase()), saved];
+  if (saved.isPrimary) {
+    for (const profile of characters) profile.isPrimary = profile.name.toLowerCase() === saved.name.toLowerCase();
+  }
+  write({ ...data, characters });
+}
+
+export async function deleteHunt(id: number) {
+  const data = read();
+  const hunts = data.hunts.filter((hunt) => hunt.id !== id);
+  write({ ...data, characters: refreshProfiles(hunts, data.characters) });
+}
