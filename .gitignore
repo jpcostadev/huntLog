@@ -45,3 +45,4 @@ yarn-error.*
 /desktop/web-dist/
 /tmp/
 *.apk
+!Instalador/*.apk

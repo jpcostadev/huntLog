@@ -1,5 +1,11 @@
 # Instalador do HuntLog Tibia
 
+## Android
+
+[**Clique aqui para baixar o APK atualizado**](https://github.com/jpcostadev/huntLog/raw/refs/heads/main/Instalador/HuntLog-Android-latest.apk)
+
+O APK inclui as mesmas abas e recursos de desempenho do desktop. Após baixar, toque no arquivo para instalar ou atualizar o HuntLog no celular.
+
 ## Windows 64 bits
 
 [**Clique aqui para baixar e instalar a versão mais recente**](https://github.com/jpcostadev/huntLog/raw/refs/heads/main/Instalador/HuntLog-Tibia-Setup-latest.exe)

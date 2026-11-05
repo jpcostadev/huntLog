@@ -10,6 +10,8 @@ Baixe o instalador atualizado na pasta [Instalador](Instalador/README.md) ou cli
 
 Depois de baixar, abra o arquivo `.exe` e siga as etapas do instalador.
 
+Para instalar no Android, baixe o [APK mais recente](https://github.com/jpcostadev/huntLog/raw/refs/heads/main/Instalador/HuntLog-Android-latest.apk) e abra o arquivo no celular.
+
 ## Recursos
 
 - Registro, edição, consulta e remoção de hunts.
