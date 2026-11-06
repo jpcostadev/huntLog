@@ -1,7 +1,7 @@
 {
   "name": "huntlog-tibia",
   "productName": "HuntLog Tibia",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "author": "Fallz Developer",
   "description": "Diário de hunts do Tibia com importação de sessões.",
   "main": "expo-router/entry",

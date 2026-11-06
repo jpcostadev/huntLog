@@ -440,7 +440,7 @@ export function AppScreen({tab}: {tab: Tab}) {
   const Calculator = () => <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
     <Header eyebrow="CONVERSOR DE TIBIA COINS" title="Calculadora" right={<View style={s.roundIcon}><CalculatorIcon size={19} color={C.lime}/></View>} />
     <Text style={s.performanceIntro}>Converta TC em GP e reais, ou descubra quantos TC equivalem ao lucro da sua hunt. As taxas ficam salvas neste aparelho.</Text>
-    <View style={s.tcRateCard}>
+    <View style={[s.tcRateCard,desktop&&s.calculatorConfigDesktop]}>
       <View style={s.tcRateHeading}><Coins size={16} color={C.lime}/><Text style={s.tcRateTitle}>CONFIGURE SUA COTAÇÃO</Text></View>
       <Text style={s.tcRateHint}>Informe qualquer lote, como 1, 50 ou 250 TC. Configure GP no Tibia e seus preços reais de compra e venda.</Text>
       <View style={s.tcRateRow}>
@@ -455,24 +455,24 @@ export function AppScreen({tab}: {tab: Tab}) {
       <View style={s.tcRateField}><Text style={s.tcRateLabel}>EU RECEBO QUANDO VENDO (R$)</Text><TextInput value={tcSellRealAmount} onChangeText={setTcSellRealAmount} placeholder="Ex.: 70,00" placeholderTextColor="#64747D" keyboardType="decimal-pad" style={s.tcRateInput}/></View>
       {calculatorBuyRealPerTc>0&&calculatorSellRealPerTc>0?<Text style={s.tcRatePerCoin}>Compra {formatCompactReais(calculatorBuyRealPerTc)}/TC · venda {formatCompactReais(calculatorSellRealPerTc)}/TC</Text>:<Text style={s.tcRateMissing}>Preencha seus preços de compra e venda para calcular a margem em reais.</Text>}
     </View>
-    <View style={s.card}>
+    <View style={[s.card,s.calculatorPanel,desktop&&s.calculatorPanelDesktop]}>
       <View style={s.tcRateHeading}><CalculatorIcon size={16} color={C.cyan}/><Text style={[s.tcRateTitle,{color:C.cyan}]}>CONVERTER TC PARA GP E REAIS</Text></View>
       <Text style={s.tcRateHint}>Digite qualquer quantidade de TC, inclusive quebrada.</Text>
       <View style={s.tcRateField}><Text style={s.tcRateLabel}>QUANTIDADE DE TC</Text><TextInput value={calculatorTcAmount} onChangeText={setCalculatorTcAmount} placeholder="Ex.: 12,5" placeholderTextColor="#64747D" keyboardType="decimal-pad" style={s.tcRateInput}/></View>
       <View style={s.tcRateResult}><Text style={s.tcRateResultLabel}>COTAÇÃO DO LOTE NO TIBIA</Text><Text style={s.tcRateResultValue}>{tcRateGpPerTc>0?money(calculatorGpValue):'Configure a cotação acima'}</Text><Text style={s.tcRateResultMeta}>{tcRateGpPerTc>0?`${calculatorTc.toLocaleString('pt-BR')} TC × ${formatCompactNumber(Math.round(tcRateGpPerTc))} gp por TC`:'Informe o tamanho do lote e o valor em GP no Tibia.'}</Text></View>
     </View>
-    <View style={s.card}>
+    <View style={[s.card,s.calculatorPanel,desktop&&s.calculatorPanelDesktop]}>
       <View style={s.tcRateHeading}><Coins size={16} color={C.orange}/><Text style={[s.tcRateTitle,{color:C.orange}]}>CONVERTER GP PARA TC</Text></View>
       <Text style={s.tcRateHint}>Use para estimar o equivalente em TC e reais de qualquer saldo ou lucro.</Text>
       <View style={s.tcRateField}><Text style={s.tcRateLabel}>VALOR EM GP</Text><TextInput value={calculatorGpAmount} onChangeText={setCalculatorGpAmount} placeholder="Ex.: 1.500.000.000" placeholderTextColor="#64747D" keyboardType="numeric" style={s.tcRateInput}/></View>
       <View style={s.tcRateResult}><Text style={s.tcRateResultLabel}>EQUIVALENTE ESTIMADO</Text><Text style={s.tcRateResultValue}>{tcRateGpPerTc>0?`${formatCompactNumber(calculatorTcValue)} TC`:'Configure a cotação acima'}</Text><Text style={s.tcRateResultMeta}>{calculatorSellRealPerTc>0?`${money(calculatorGp)} ≈ ${formatCompactReais(calculatorTcValue*calculatorSellRealPerTc)} pela sua cotação de venda`:money(calculatorGp)}</Text></View>
     </View>
-    <View style={s.tcRateCard}>
+    <View style={[s.tcRateCard,desktop&&s.calculatorConfigDesktop]}>
       <View style={s.tcRateHeading}><Coins size={16} color={C.orange}/><Text style={s.tcRateTitle}>LUCRO NA COMPRA E VENDA DE TC</Text></View>
       <Text style={s.tcRateHint}>Resultado em dinheiro para a quantidade escolhida, usando seus preços de compra e venda acima.</Text>
       <View style={s.tcRateResult}><Text style={s.tcRateResultLabel}>MARGEM NESTE LOTE · {calculatorTc.toLocaleString('pt-BR')} TC</Text><Text style={[s.tcRateResultValue,{color:calculatorCashProfit>=0?C.green:C.red}]}>{calculatorBuyRealPerTc>0&&calculatorSellRealPerTc>0?formatCompactReais(calculatorCashProfit):'Preencha compra e venda'}</Text><Text style={s.tcRateResultMeta}>{calculatorBuyRealPerTc>0&&calculatorSellRealPerTc>0?`Compra: ${formatCompactReais(calculatorCashBuy)} · venda: ${formatCompactReais(calculatorCashSell)}`:'Informe quanto você paga e quanto recebe pelo lote configurado.'}</Text></View>
     </View>
-    <View style={s.tcRateCard}>
+    <View style={[s.tcRateCard,desktop&&s.calculatorConfigDesktop]}>
       <View style={s.tcRateHeading}><TrendingUp size={16} color={C.green}/><Text style={s.tcRateTitle}>LUCRO DAS SUAS HUNTS</Text></View>
       <Text style={s.tcRateHint}>Estimativa do lucro líquido conforme o filtro selecionado em Relatórios.</Text>
       <View style={s.tcRateResult}><Text style={s.tcRateResultLabel}>LUCRO ACUMULADO</Text><Text style={s.tcRateResultValue}>{huntRealEstimate===null?'Configure as taxas acima':formatCompactReais(huntRealEstimate)}</Text><Text style={s.tcRateResultMeta}>{huntRealEstimate===null?`${money(reportTotals.profit)} · período atual`:`${formatCompactNumber(huntTcEquivalent)} TC · ${money(reportTotals.profit)} líquidos no período`}</Text></View>
@@ -607,20 +607,23 @@ function Field({label,value,onChange,placeholder,keyboard,width}: {label:string;
 
 const s = StyleSheet.create({
   mobileShell:{flex:1,minWidth:0,width:'100%'},
-  tcRateCard:{padding:14,marginBottom:19,borderRadius:15,borderWidth:1,borderColor:'#394A36',backgroundColor:'#111E1A'},
-  tcRateHeading:{flexDirection:'row',alignItems:'center',gap:8,marginBottom:5},
+  tcRateCard:{padding:16,marginBottom:18,borderRadius:16,borderWidth:1,borderColor:'#394A36',backgroundColor:'#111E1A'},
+  calculatorConfigDesktop:{padding:22,marginBottom:22,borderRadius:18},
+  calculatorPanel:{padding:16,marginBottom:16},
+  calculatorPanelDesktop:{padding:22,marginBottom:22,borderRadius:18},
+  tcRateHeading:{flexDirection:'row',alignItems:'center',gap:10,marginBottom:9},
   tcRateTitle:{color:C.lime,fontSize:10,fontWeight:'900',letterSpacing:.7},
-  tcRateHint:{color:'#9CAC9F',fontSize:9,lineHeight:14,marginBottom:11},
-  tcRateRow:{flexDirection:'row',gap:8},
-  tcRateField:{flex:1,minWidth:0,marginBottom:8},
-  tcRateLabel:{color:'#AAB8AD',fontSize:7,fontWeight:'900',letterSpacing:.55,marginBottom:5},
-  tcRateInput:{height:40,paddingHorizontal:10,borderRadius:9,borderWidth:1,borderColor:'#34453D',backgroundColor:'#0A1410',color:C.text,fontSize:11,fontWeight:'700'},
-  tcRatePerCoin:{color:C.green,fontSize:9,fontWeight:'800',marginTop:-1,marginBottom:10},
-  tcRateMissing:{color:C.orange,fontSize:9,fontWeight:'700',marginTop:-1,marginBottom:10},
-  tcRateResult:{padding:12,borderRadius:11,borderWidth:1,borderColor:'#355448',backgroundColor:'#142820'},
-  tcRateResultLabel:{color:'#A1B9A8',fontSize:7,fontWeight:'900',letterSpacing:.6},
-  tcRateResultValue:{color:C.green,fontSize:21,fontWeight:'900',marginTop:4},
-  tcRateResultMeta:{color:'#B1C1B5',fontSize:8,lineHeight:13,marginTop:4},
+  tcRateHint:{color:'#AABBB1',fontSize:10,lineHeight:16,marginBottom:16},
+  tcRateRow:{flexDirection:'row',gap:12},
+  tcRateField:{flex:1,minWidth:0,marginBottom:12},
+  tcRateLabel:{color:'#B7C5BC',fontSize:8,fontWeight:'900',letterSpacing:.65,marginBottom:7},
+  tcRateInput:{height:46,paddingHorizontal:13,borderRadius:10,borderWidth:1,borderColor:'#34453D',backgroundColor:'#0A1410',color:C.text,fontSize:13,fontWeight:'700'},
+  tcRatePerCoin:{color:C.green,fontSize:10,fontWeight:'800',marginTop:0,marginBottom:14},
+  tcRateMissing:{color:C.orange,fontSize:10,fontWeight:'700',lineHeight:15,marginTop:0,marginBottom:14},
+  tcRateResult:{padding:16,borderRadius:13,borderWidth:1,borderColor:'#355448',backgroundColor:'#142820'},
+  tcRateResultLabel:{color:'#A1B9A8',fontSize:8,fontWeight:'900',letterSpacing:.75},
+  tcRateResultValue:{color:C.green,fontSize:24,fontWeight:'900',marginTop:7},
+  tcRateResultMeta:{color:'#B1C1B5',fontSize:9,lineHeight:15,marginTop:6},
   calculatorReportsLink:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingTop:12},
   tcRateFootnote:{color:C.muted,fontSize:8,lineHeight:12,marginTop:8},
   reportExportButton:{minHeight:46,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:9,paddingHorizontal:12,marginTop:-5,marginBottom:14,borderRadius:12,borderWidth:1,borderColor:'#536B3E',backgroundColor:'#1B2A22'},
