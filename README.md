@@ -19,8 +19,7 @@ Para instalar no Android, baixe o [APK mais recente](https://github.com/jpcostad
 - Importação do texto `Session data` copiado do cliente do Tibia, incluindo horários, XP, loot, supplies, balance, dano, cura, monstros e itens.
 - Abas para Minhas Hunts, Desempenho, Relatórios, Calculadora, Compartilhar e Perfil.
 - Exportação do relatório filtrado em Excel (`.xlsx`), com abas de resumo, hunts, monstros e itens, no Android e no desktop.
-- A aba Calculadora usa o preço mínimo de 25 TC no Tibia para calcular GP por TC e o equivalente em GP de 250 TC.
-- Cadastre faixas de preço somente para venda em reais (quantidade mínima, tamanho do lote e preço total). A simulação escolhe automaticamente a faixa adequada e mostra quanto você recebe.
+- A Calculadora pede seu preço de venda em reais por TC, a cotação total de 25 TC no Tibia e quantos TC você quer vender. Ela mostra o total em reais e os GP necessários para obter essa quantidade.
 - As cotações de GP e os preços de venda ficam salvos no aparelho; o lucro líquido das hunts também ganha estimativa em reais nos Relatórios e no Excel.
 - Valores grandes na interface aparecem abreviados em `k`, `M`, `B`, `T`, `Q`, `E` e unidades maiores; os campos e a exportação Excel mantêm os números completos.
 - Busca, filtros por período/data e ordenação por lucro, XP e XP por hora.

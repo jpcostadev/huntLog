@@ -1,7 +1,7 @@
 {
   "name": "huntlog-tibia-desktop",
   "productName": "HuntLog Tibia",
-  "version": "1.0.8",
+  "version": "1.1.0",
   "author": "Fallz Developer",
   "description": "Diário de hunts do Tibia com importação de sessões.",
   "main": "main.cjs",

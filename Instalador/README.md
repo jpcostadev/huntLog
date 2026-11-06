@@ -4,7 +4,7 @@
 
 [**Clique aqui para baixar o APK atualizado**](https://github.com/jpcostadev/huntLog/raw/refs/heads/main/Instalador/HuntLog-Android-latest.apk)
 
-O APK inclui as mesmas abas, relatórios, exportação Excel e calculadora de TC do desktop. As taxas de conversão ficam salvas no aparelho. Após baixar, toque no arquivo para instalar ou atualizar o HuntLog no celular.
+O APK inclui as mesmas abas, relatórios, exportação Excel e calculadora de TC do desktop. Informe seu valor de venda em reais por TC, a cotação de 25 TC em GP e a quantidade desejada. As taxas ficam salvas no aparelho.
 
 ## Windows 64 bits
 
