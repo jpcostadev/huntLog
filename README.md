@@ -83,7 +83,7 @@ npm run desktop:release
 O instalador aparece em:
 
 ```text
-out/desktop/HuntLog-Tibia-Setup-1.0.4-x64.exe
+out/desktop/HuntLog-Tibia-Setup-1.0.5-x64.exe
 ```
 
 O instalador atual não é assinado com certificado de código; o Windows pode mostrar o aviso de publicador desconhecido.

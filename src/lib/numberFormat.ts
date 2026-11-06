@@ -1,6 +1,13 @@
 const fullNumber = new Intl.NumberFormat('pt-BR');
 const brlNumber = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const units = [
+  { size: 1e33, suffix: 'Dc' },
+  { size: 1e30, suffix: 'No' },
+  { size: 1e27, suffix: 'Oc' },
+  { size: 1e24, suffix: 'Sp' },
+  { size: 1e21, suffix: 'Sx' },
+  { size: 1e18, suffix: 'E' },
+  { size: 1e15, suffix: 'Q' },
   { size: 1e12, suffix: 'T' },
   { size: 1e9, suffix: 'B' },
   { size: 1e6, suffix: 'M' },
@@ -13,7 +20,14 @@ export function formatCompactNumber(value: number) {
   let unitIndex = units.findIndex(unit => absolute >= unit.size);
   if (unitIndex < 0) return fullNumber.format(value);
   const currentUnit = units[unitIndex];
-  if (unitIndex > 0 && Math.round((absolute / currentUnit.size) * 10) / 10 >= 1000) unitIndex--;
+  if (Math.round((absolute / currentUnit.size) * 10) / 10 >= 1000) {
+    if (unitIndex > 0) unitIndex--;
+    else {
+      const exponent = Math.floor(Math.log10(absolute) / 3) * 3;
+      const scaled = absolute / 10 ** exponent;
+      return `${new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 }).format(scaled)}e${exponent}`;
+    }
+  }
   const unit = units[unitIndex];
   const scaled = value / unit.size;
   return `${new Intl.NumberFormat('pt-BR', { maximumFractionDigits: Math.abs(scaled) < 10 ? 1 : 0 }).format(scaled)}${unit.suffix}`;
