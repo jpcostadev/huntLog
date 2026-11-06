@@ -6,7 +6,6 @@ export type TibiaCoinEstimate = {
   realValue: number | null;
   packageCount: number;
   soldTc: number;
-  remainingTc: number;
   priceTier: TibiaCoinPriceTier | null;
 };
 
@@ -17,7 +16,6 @@ export type TibiaCoinTradeEstimate = {
   priceTier: TibiaCoinPriceTier | null;
   packageCount: number;
   soldTc: number;
-  remainingTc: number;
 };
 
 export function selectTibiaCoinSaleTier(tcQuantity: number, tiers: TibiaCoinPriceTier[]) {
@@ -31,9 +29,8 @@ export function estimateTibiaCoinTrade(tcQuantity: number, rates: TibiaCoinRates
   const gpPerTc = rates.tcAmount > 0 ? rates.gpAmount / rates.tcAmount : 0;
   const priceTier = selectTibiaCoinSaleTier(tcQuantity, rates.sellTiers ?? []);
   const legacyRealPerTc = rates.realPer250 / 250;
-  const packageCount = priceTier && tcQuantity > 0 ? Math.floor(tcQuantity / priceTier.lotTc + 1e-9) : 0;
-  const soldTc = priceTier ? packageCount * priceTier.lotTc : 0;
-  const remainingTc = priceTier ? Math.max(0, tcQuantity - soldTc) : 0;
+  const packageCount = priceTier && tcQuantity > 0 ? tcQuantity / priceTier.lotTc : 0;
+  const soldTc = priceTier ? tcQuantity : 0;
   const saleRevenue = priceTier
     ? packageCount * priceTier.realPrice
     : (rates.sellTiers?.length ? null : tcQuantity * legacyRealPerTc);
@@ -44,7 +41,6 @@ export function estimateTibiaCoinTrade(tcQuantity: number, rates: TibiaCoinRates
     priceTier,
     packageCount,
     soldTc,
-    remainingTc,
   };
 }
 
@@ -52,5 +48,5 @@ export function estimateHuntValueInReal(profitGp: number, rates: TibiaCoinRates)
   const gpPerTc = rates.tcAmount > 0 ? rates.gpAmount / rates.tcAmount : 0;
   const tcEquivalent = gpPerTc > 0 ? profitGp / gpPerTc : 0;
   const trade = estimateTibiaCoinTrade(tcEquivalent, rates);
-  return { gpPerTc, tcEquivalent, realValue: trade.saleRevenue, packageCount: trade.packageCount, soldTc: trade.soldTc, remainingTc: trade.remainingTc, priceTier: trade.priceTier };
+  return { gpPerTc, tcEquivalent, realValue: trade.saleRevenue, packageCount: trade.packageCount, soldTc: trade.soldTc, priceTier: trade.priceTier };
 }

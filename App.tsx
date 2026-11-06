@@ -162,10 +162,11 @@ export function AppScreen({tab}: {tab: Tab}) {
   const totals = (rows: Hunt[]) => rows.reduce((a,h) => ({ xp:a.xp+h.xp, loot:a.loot+h.loot, supplies:a.supplies+h.supplies, profit:a.profit+h.loot-h.supplies, minutes:a.minutes+h.duration }), { xp:0, loot:0, supplies:0, profit:0, minutes:0 });
   const allTotals = totals(hunts), reportTotals = totals(filtered);
   const currentTcRates: TibiaCoinRates = { realPer250:0, realLotAmount:250, realBuyAmount:0, realSellAmount:0, tcAmount:25, gpAmount:asDecimal(tcGpAmount), sellTiers };
-  const huntEstimate = estimateHuntValueInReal(reportTotals.profit, currentTcRates);
-  const tcRateGpPerTc = huntEstimate.gpPerTc;
-  const huntTcEquivalent = huntEstimate.tcEquivalent;
-  const huntRealEstimate = huntEstimate.realValue;
+  const tcRateGpPerTc = currentTcRates.tcAmount > 0 ? currentTcRates.gpAmount / currentTcRates.tcAmount : 0;
+  const huntEstimates = filtered.map(hunt => ({hunt, estimate:estimateHuntValueInReal(hunt.loot-hunt.supplies,currentTcRates)}));
+  const huntTcEquivalent = huntEstimates.reduce((sum,row)=>sum+(row.estimate.gpPerTc>0?row.estimate.tcEquivalent:0),0);
+  const configuredHuntEstimates = huntEstimates.filter(row=>row.estimate.realValue!==null);
+  const huntRealEstimate = configuredHuntEstimates.length ? configuredHuntEstimates.reduce((sum,row)=>sum+(row.estimate.realValue??0),0) : null;
   const calculatorTc = asDecimal(calculatorTcAmount);
   const calculatorTrade = estimateTibiaCoinTrade(calculatorTc, currentTcRates);
   const calculatorGpValue = calculatorTrade.gpValue;
@@ -411,8 +412,9 @@ export function AppScreen({tab}: {tab: Tab}) {
     <View style={s.reportGrid}><View style={s.reportTile}><Zap size={16} color={C.cyan}/><Text style={s.tileLabel}>XP TOTAL</Text><Text style={s.tileValue}>{xpShort(reportTotals.xp)}</Text></View><View style={s.reportTile}><Coins size={16} color={C.orange}/><Text style={s.tileLabel}>LOOT BRUTO</Text><Text style={s.tileValue}>{money(reportTotals.loot)}</Text></View><View style={s.reportTile}><Swords size={16} color={C.lime}/><Text style={s.tileLabel}>SESSÕES</Text><Text style={s.tileValue}>{filtered.length}</Text></View><View style={s.reportTile}><Timer size={16} color={C.cyan}/><Text style={s.tileLabel}>TEMPO DE HUNT</Text><Text style={s.tileValue}>{Math.floor(reportTotals.minutes/60)}h {reportTotals.minutes%60}m</Text></View></View>
     <View style={s.tcRateCard}>
       <View style={s.tcRateHeading}><Coins size={16} color={C.lime}/><Text style={s.tcRateTitle}>VALOR DAS HUNTS EM REAIS</Text></View>
-      <Text style={s.tcRateHint}>Cotação: {tcRateGpPerTc>0?`1 TC = ${gpAmountDisplay(tcRateGpPerTc)} GP`:'configure GP/25 TC'} · faixa aplicada: {huntEstimate.priceTier?`${formatCompactReais(huntEstimate.priceTier.realPrice)} por pacote de ${n(huntEstimate.priceTier.lotTc)} TC`:'nenhuma faixa disponível para esta quantidade'}.</Text>
-      <View style={s.tcRateResult}><Text style={s.tcRateResultLabel}>LUCRO DA HUNT EM VALOR ESTIMADO</Text><Text style={s.tcRateResultValue}>{huntRealEstimate===null?'Configure as taxas acima':formatCompactReais(huntRealEstimate)}</Text><Text style={s.tcRateResultMeta}>{huntRealEstimate===null?`${money(reportTotals.profit)} · lucro líquido no período selecionado`:`${formatCompactNumber(huntTcEquivalent)} TC equivalentes · ${n(huntEstimate.packageCount)} pacotes (${n(huntEstimate.soldTc)} TC) · ${n(huntEstimate.remainingTc)} TC fora do pacote · ${money(reportTotals.profit)} líquidos`}</Text></View>
+      <Text style={s.tcRateHint}>Cotação: {tcRateGpPerTc>0?`1 TC = ${gpAmountDisplay(tcRateGpPerTc)} GP`:'configure GP/25 TC'} · cada hunt usa sua faixa correspondente, proporcional ao tamanho do pacote.</Text>
+      <View style={s.tcRateResult}><Text style={s.tcRateResultLabel}>TOTAL ESTIMADO DAS HUNTS NO PERÍODO</Text><Text style={s.tcRateResultValue}>{huntRealEstimate===null?'Configure as taxas acima':formatCompactReais(huntRealEstimate)}</Text><Text style={s.tcRateResultMeta}>{huntRealEstimate===null?`${money(reportTotals.profit)} · lucro líquido no período selecionado`:`${huntEstimates.length} hunts · ${localizedAmount(huntTcEquivalent,2)} TC equivalentes somados · estimativa de cada hunt somada`}</Text></View>
+      <View style={s.reportHuntList}><Text style={s.reportHuntListTitle}>ESTIMATIVA POR HUNT</Text>{huntEstimates.length?huntEstimates.map(({hunt,estimate})=><View key={hunt.id} style={s.reportHuntRow}><View style={s.reportHuntTop}><Text numberOfLines={1} style={s.reportHuntName}>{hunt.location} · {dateLabel(hunt.date)}</Text><Text style={s.reportHuntAmount}>{estimate.realValue===null?'—':formatCompactReais(estimate.realValue)}</Text></View><Text style={s.reportHuntMeta}>{gpAmountDisplay(hunt.loot-hunt.supplies)} GP → {estimate.gpPerTc>0?`${localizedAmount(estimate.tcEquivalent,2)} TC`: 'configure cotação'}{estimate.priceTier?` · ${localizedAmount(estimate.packageCount,2)} pacotes equivalentes de ${n(estimate.priceTier.lotTc)} TC × ${formatCompactReais(estimate.priceTier.realPrice)}`:''}</Text></View>):<Text style={s.reportHuntMeta}>Nenhuma hunt neste período.</Text>}</View>
       <Pressable onPress={()=>navigate('calculator')} style={s.calculatorReportsLink}><Text style={s.link}>ABRIR CALCULADORA DE TC</Text><ChevronRight size={14} color={C.lime}/></Pressable>
     </View>
     <View style={s.sectionHead}><Text style={s.sectionTitle}>XP NOS ÚLTIMOS 7 DIAS</Text><Text style={s.chartLegend}><View style={s.legendDot}/> XP</Text></View>
@@ -447,7 +449,7 @@ export function AppScreen({tab}: {tab: Tab}) {
       <View style={s.saleResultCard}>
         <Text style={s.tcRateResultLabel}>VOCÊ RECEBE APROXIMADAMENTE</Text>
         <Text style={s.saleResultValue}>{calculatorTrade.saleRevenue!==null?formatCompactReais(calculatorTrade.saleRevenue):'Configure uma faixa para esta quantidade'}</Text>
-        <Text style={s.tcRateResultMeta}>{calculatorTrade.priceTier?`${n(calculatorTrade.packageCount)} pacotes de ${n(calculatorTrade.priceTier.lotTc)} TC · ${n(calculatorTrade.soldTc)} TC vendidos · ${n(calculatorTrade.remainingTc)} TC fora do pacote · ${formatCompactReais(calculatorTrade.priceTier.realPrice)} por pacote`:'Não há faixa configurada para essa quantidade.'}</Text>
+        <Text style={s.tcRateResultMeta}>{calculatorTrade.priceTier?`${localizedAmount(calculatorTrade.packageCount,2)} pacotes equivalentes de ${n(calculatorTrade.priceTier.lotTc)} TC · ${localizedAmount(calculatorTrade.soldTc,2)} TC considerados · ${formatCompactReais(calculatorTrade.priceTier.realPrice)} por pacote`:'Não há faixa configurada para essa quantidade.'}</Text>
         {tcRateGpPerTc>0&&<View style={s.saleGpLine}><Text style={s.saleGpLabel}>GP necessários para obter {n(calculatorTc)} TC</Text><Text style={s.saleGpValue}>{gpAmountDisplay(Math.round(calculatorGpValue))} GP</Text></View>}
       </View>
     </View>
@@ -631,6 +633,13 @@ const s = StyleSheet.create({
   huntEstimateLabel:{color:'#AAB9AF',fontSize:8,fontWeight:'900',letterSpacing:.6},
   huntEstimateHint:{color:C.muted,fontSize:8,marginTop:5},
   huntEstimateValue:{color:C.green,fontSize:15,fontWeight:'900'},
+  reportHuntList:{marginTop:14,padding:13,borderRadius:12,borderWidth:1,borderColor:C.line,backgroundColor:'#0D151E'},
+  reportHuntListTitle:{color:C.lime,fontSize:9,fontWeight:'900',letterSpacing:.7,marginBottom:5},
+  reportHuntRow:{paddingVertical:9,borderBottomWidth:1,borderColor:C.line},
+  reportHuntTop:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:12},
+  reportHuntName:{flex:1,color:C.text,fontSize:10,fontWeight:'800'},
+  reportHuntAmount:{color:C.green,fontSize:12,fontWeight:'900'},
+  reportHuntMeta:{color:C.muted,fontSize:8,lineHeight:13,marginTop:4},
   calculatorReportsLink:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingTop:12},
   tcRateFootnote:{color:C.muted,fontSize:8,lineHeight:12,marginTop:8},
   reportExportButton:{minHeight:46,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:9,paddingHorizontal:12,marginTop:-5,marginBottom:14,borderRadius:12,borderWidth:1,borderColor:'#536B3E',backgroundColor:'#1B2A22'},

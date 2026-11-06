@@ -41,7 +41,11 @@ export function buildHuntWorkbook(hunts: Hunt[], rates: TibiaCoinRates = { realP
     supplies: sum.supplies + hunt.supplies,
     minutes: sum.minutes + hunt.duration,
   }), { xp: 0, loot: 0, supplies: 0, minutes: 0 });
-  const overallEstimate = estimateHuntValueInReal(total.loot - total.supplies, rates);
+  const huntEstimates = hunts.map(hunt => estimateHuntValueInReal(hunt.loot - hunt.supplies, rates));
+  const configuredEstimates = huntEstimates.filter(estimate => estimate.realValue !== null);
+  const totalEstimate = configuredEstimates.length ? configuredEstimates.reduce((sum, estimate) => sum + (estimate.realValue ?? 0), 0) : null;
+  const totalTcEquivalent = huntEstimates.reduce((sum, estimate) => sum + (estimate.gpPerTc > 0 ? estimate.tcEquivalent : 0), 0);
+  const totalPackageEquivalent = huntEstimates.reduce((sum, estimate) => sum + estimate.packageCount, 0);
   const sheets: Sheet[] = [
     { name: 'Resumo', rows: [
       ['HUNTLOG TIBIA · RELATÓRIO DE HUNTS'],
@@ -53,26 +57,23 @@ export function buildHuntWorkbook(hunts: Hunt[], rates: TibiaCoinRates = { realP
       ['Tempo total (minutos)', total.minutes],
       ['Lote usado para calcular (TC)', rates.tcAmount],
       ['Preço do lote (gp)', rates.gpAmount],
-      ['Taxa calculada (gp/TC)', overallEstimate.gpPerTc],
-      ['Faixa aplicada ao lucro (TC mínimos)', overallEstimate.priceTier?.minimumTc ?? 'Nenhuma faixa aplicável'],
-      ['Pacote da faixa aplicada (TC)', overallEstimate.priceTier?.lotTc ?? ''],
-      ['Preço do pacote aplicado (R$)', overallEstimate.priceTier?.realPrice ?? ''],
-      ['Lucro convertido (TC)', overallEstimate.realValue === null ? '' : overallEstimate.tcEquivalent],
-      ['Pacotes completos estimados', overallEstimate.packageCount],
-      ['TC incluídos nos pacotes', overallEstimate.soldTc],
-      ['TC restantes fora de pacote', overallEstimate.remainingTc],
-      ['Estimativa do lucro (R$)', overallEstimate.realValue ?? 'Configure as taxas no aplicativo'],
+      ['Taxa calculada (gp/TC)', rates.tcAmount > 0 ? rates.gpAmount / rates.tcAmount : 0],
+      ['Faixa de venda', 'Aplicada individualmente a cada hunt conforme os TC equivalentes'],
+      ['Lucro convertido somado (TC)', totalTcEquivalent],
+      ['Pacotes equivalentes somados', totalPackageEquivalent],
+      ['TC considerados na estimativa', totalTcEquivalent],
+      ['Estimativa total das hunts (R$)', totalEstimate ?? 'Configure as taxas no aplicativo'],
       ['Gerado em', new Date().toLocaleString('pt-BR')],
     ] },
     { name: 'Hunts', rows: [
-      ['Data', 'Personagem', 'Vocação', 'Level', 'Local / Respawn', 'Duração (min)', 'XP ganho', 'XP/h', 'XP bruto', 'XP bruto/h', 'Loot (gp)', 'Supplies (gp)', 'Lucro (gp)', 'Balance (gp)', 'Dano', 'Dano/h', 'Cura', 'Cura/h', 'Equivalente TC', 'Pacotes TC', 'TC em pacotes', 'TC restantes', 'Estimativa (R$)'],
+      ['Data', 'Personagem', 'Vocação', 'Level', 'Local / Respawn', 'Duração (min)', 'XP ganho', 'XP/h', 'XP bruto', 'XP bruto/h', 'Loot (gp)', 'Supplies (gp)', 'Lucro (gp)', 'Balance (gp)', 'Dano', 'Dano/h', 'Cura', 'Cura/h', 'Equivalente TC', 'Pacotes equivalentes', 'TC considerados', 'Estimativa (R$)'],
       ...hunts.map(hunt => {
         const estimate = estimateHuntValueInReal(hunt.loot - hunt.supplies, rates);
         return [hunt.date, hunt.character, hunt.vocation, hunt.level, hunt.location, hunt.duration, hunt.xp,
         hunt.session?.xpPerHour ?? Math.round(hunt.duration ? hunt.xp * 60 / hunt.duration : 0), hunt.session?.rawXpGain ?? 0,
         hunt.session?.rawXpPerHour ?? 0, hunt.loot, hunt.supplies, hunt.loot - hunt.supplies, hunt.session?.balance ?? 0,
         hunt.session?.damage ?? 0, hunt.session?.damagePerHour ?? 0, hunt.session?.healing ?? 0, hunt.session?.healingPerHour ?? 0,
-        estimate.gpPerTc > 0 ? estimate.tcEquivalent : '', estimate.packageCount, estimate.soldTc, estimate.remainingTc, estimate.realValue ?? '']
+        estimate.gpPerTc > 0 ? estimate.tcEquivalent : '', estimate.packageCount, estimate.soldTc, estimate.realValue ?? '']
       }),
     ] },
     { name: 'Monstros', rows: [
