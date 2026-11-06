@@ -1,6 +1,7 @@
 export type SessionEntry = { count: number; name: string };
 
 export type TibiaSession = {
+  rawText?: string;
   startedAt: string;
   endedAt: string;
   rawXpGain: number;

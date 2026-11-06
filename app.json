@@ -2,7 +2,7 @@
   "expo": {
     "name": "HuntLog Tibia",
     "slug": "huntlog-tibia",
-    "version": "1.1.8",
+    "version": "1.1.9",
     "orientation": "portrait",
     "icon": "./assets/huntlog-icon.png",
     "userInterfaceStyle": "dark",
@@ -11,7 +11,7 @@
     },
     "android": {
       "package": "com.huntlog.tibia",
-      "versionCode": 21,
+      "versionCode": 22,
       "softwareKeyboardLayoutMode": "resize",
       "backgroundColor": "#080D14",
       "adaptiveIcon": {

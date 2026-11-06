@@ -57,6 +57,7 @@ export function parseTibiaSession(source: string): ParsedTibiaSession {
     loot,
     supplies,
     details: {
+      rawText: text,
       startedAt: `${startDate} ${startTime}`,
       endedAt: `${endDate} ${endTime}`,
       rawXpGain: valueFor(text, 'Raw XP Gain'),
@@ -71,4 +72,37 @@ export function parseTibiaSession(source: string): ParsedTibiaSession {
       items: entriesIn(text, 'Looted Items'),
     },
   };
+}
+
+const tibiaNumber = (value: number) => new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value || 0);
+
+export function formatTibiaSessionText(session: TibiaSession, hunt: { duration: number; xp: number; loot: number; supplies: number }): string {
+  if (session.rawText?.trim()) return session.rawText;
+
+  const splitTimestamp = (value: string) => {
+    const match = value.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})$/);
+    return match ? `${match[1]}, ${match[2]}` : value;
+  };
+  const hours = Math.floor(hunt.duration / 60);
+  const minutes = Math.max(0, hunt.duration % 60);
+  const lines = [
+    `Session data: From ${splitTimestamp(session.startedAt)} to ${splitTimestamp(session.endedAt)}`,
+    `Session: ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}h`,
+    `Raw XP Gain: ${tibiaNumber(session.rawXpGain)}`,
+    `XP Gain: ${tibiaNumber(hunt.xp)}`,
+    `Raw XP/h: ${tibiaNumber(session.rawXpPerHour)}`,
+    `XP/h: ${tibiaNumber(session.xpPerHour)}`,
+    `Loot: ${tibiaNumber(hunt.loot)}`,
+    `Supplies: ${tibiaNumber(hunt.supplies)}`,
+    `Balance: ${tibiaNumber(session.balance)}`,
+    `Damage: ${tibiaNumber(session.damage)}`,
+    `Damage/h: ${tibiaNumber(session.damagePerHour)}`,
+    `Healing: ${tibiaNumber(session.healing)}`,
+    `Healing/h: ${tibiaNumber(session.healingPerHour)}`,
+    'Killed Monsters:',
+    ...session.monsters.map(entry => `${tibiaNumber(entry.count)}x ${entry.name}`),
+    'Looted Items:',
+    ...session.items.map(entry => `${tibiaNumber(entry.count)}x ${entry.name}`),
+  ];
+  return lines.join('\n');
 }

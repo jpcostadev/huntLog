@@ -1,12 +1,13 @@
 {
   "name": "huntlog-tibia",
   "productName": "HuntLog Tibia",
-  "version": "1.1.8",
+  "version": "1.1.9",
   "author": "Fallz Developer",
   "description": "Diário de hunts do Tibia com importação de sessões.",
   "main": "expo-router/entry",
   "dependencies": {
     "expo": "~58.0.23",
+    "expo-clipboard": "~58.0.4",
     "expo-constants": "~58.0.15",
     "expo-file-system": "~58.0.13",
     "expo-linear-gradient": "~58.0.3",
