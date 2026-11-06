@@ -17,7 +17,7 @@ export function selectTibiaCoinSaleTier(tcQuantity: number, tiers: TibiaCoinPric
   const usable = tiers.filter(tier => tier.minimumTc >= 0 && tier.lotTc > 0 && tier.realPrice > 0).sort((a, b) => a.minimumTc - b.minimumTc);
   if (!usable.length) return null;
   const eligible = usable.filter(tier => tier.minimumTc <= tcQuantity);
-  return eligible[eligible.length - 1] ?? usable[0];
+  return eligible[eligible.length - 1] ?? null;
 }
 
 export function estimateTibiaCoinTrade(tcQuantity: number, rates: TibiaCoinRates): TibiaCoinTradeEstimate {

@@ -13,7 +13,7 @@ import { captureRef } from 'react-native-view-shot';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { deleteHunt as deleteStoredHunt, loadHuntData, loadTibiaCoinRates, saveCharacter as persistCharacter, saveHunt as persistHunt, saveTibiaCoinRates } from './src/lib/storage';
-import type { CharacterInput, CharacterProfile, Hunt, TibiaCoinRates, TibiaSession } from './src/lib/models';
+import type { CharacterInput, CharacterProfile, Hunt, TibiaCoinPriceTier, TibiaCoinRates, TibiaSession } from './src/lib/models';
 import { parseTibiaSession } from './src/lib/tibiaSessionParser';
 import {
   Activity, AlertCircle, ArrowDownLeft, ArrowUpRight, CalendarDays, Calculator as CalculatorIcon, Check, ChevronRight, Coins, Crown,
@@ -31,6 +31,7 @@ const C = {
 };
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 const n = (v: number) => new Intl.NumberFormat('pt-BR').format(v || 0);
+const gpAmountDisplay = (v: number) => new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(Number.isFinite(v) ? v : 0);
 const money = (v: number) => ` ${formatCompactNumber(v)} gp`;
 const xpShort = (v: number) => formatCompactNumber(v);
 // XP, levels, gold and duration are whole numbers. Ignore pasted grouping
@@ -88,7 +89,7 @@ export function AppScreen({tab}: {tab: Tab}) {
   const [importError, setImportError] = useState('');
   const [reportExporting, setReportExporting] = useState(false);
   const [reportExportError, setReportExportError] = useState('');
-  const [sellPricePerTc, setSellPricePerTc] = useState('');
+  const [sellTiers, setSellTiers] = useState<TibiaCoinPriceTier[]>([{minimumTc:25,lotTc:25,realPrice:7},{minimumTc:250,lotTc:250,realPrice:52},{minimumTc:5000,lotTc:250,realPrice:51.5},{minimumTc:10000,lotTc:250,realPrice:51}]);
   const [tcGpAmount, setTcGpAmount] = useState('');
   const [calculatorTcAmount, setCalculatorTcAmount] = useState('25');
   const [tcRatesLoaded, setTcRatesLoaded] = useState(false);
@@ -113,10 +114,7 @@ export function AppScreen({tab}: {tab: Tab}) {
     let active = true;
     loadTibiaCoinRates().then(rates => {
       if (!active) return;
-      const savedTier = rates.sellTiers?.[0];
-      const savedLot = savedTier ? (savedTier.lotTc === 1 && savedTier.minimumTc >= 25 ? savedTier.minimumTc : savedTier.lotTc) : rates.realLotAmount;
-      const savedPrice = savedTier ? savedTier.realPrice / Math.max(1, savedLot) : rates.realSellAmount / Math.max(1, rates.realLotAmount);
-      setSellPricePerTc(savedPrice > 0 ? localizedAmount(savedPrice,4,2) : '');
+      if (rates.sellTiers?.length) setSellTiers(rates.sellTiers);
       setTcGpAmount(rates.gpAmount ? localizedAmount(rates.gpAmount) : '');
       setTcRatesLoaded(true);
     }).catch(() => { if (active) setTcRatesLoaded(true); });
@@ -124,12 +122,10 @@ export function AppScreen({tab}: {tab: Tab}) {
   }, []);
   useEffect(() => {
     if (!tcRatesLoaded) return;
-    const realPerTc = asDecimal(sellPricePerTc);
-    const realPer250 = realPerTc * 250;
-    const rates: TibiaCoinRates = { realPer250, realLotAmount:1, realBuyAmount:0, realSellAmount:realPerTc, tcAmount:25, gpAmount:asDecimal(tcGpAmount), sellTiers:[] };
+    const rates: TibiaCoinRates = { realPer250:0, realLotAmount:250, realBuyAmount:0, realSellAmount:0, tcAmount:25, gpAmount:asDecimal(tcGpAmount), sellTiers };
     const timer = setTimeout(() => { void saveTibiaCoinRates(rates).catch(() => setToast('Não consegui salvar as taxas de TC.')); }, 550);
     return () => clearTimeout(timer);
-  }, [tcRatesLoaded, sellPricePerTc, tcGpAmount]);
+  }, [tcRatesLoaded, sellTiers, tcGpAmount]);
 
   const selectedHunt = hunts.find(h => h.id === selected) ?? null;
   const detailHunt = hunts.find(h => h.id === detailHuntId) ?? null;
@@ -165,15 +161,14 @@ export function AppScreen({tab}: {tab: Tab}) {
   }, [hunts, period]);
   const totals = (rows: Hunt[]) => rows.reduce((a,h) => ({ xp:a.xp+h.xp, loot:a.loot+h.loot, supplies:a.supplies+h.supplies, profit:a.profit+h.loot-h.supplies, minutes:a.minutes+h.duration }), { xp:0, loot:0, supplies:0, profit:0, minutes:0 });
   const allTotals = totals(hunts), reportTotals = totals(filtered);
-  const realPerTc = asDecimal(sellPricePerTc);
-  const tcRealPer250 = realPerTc * 250;
-  const currentTcRates: TibiaCoinRates = { realPer250:tcRealPer250, realLotAmount:1, realBuyAmount:0, realSellAmount:realPerTc, tcAmount:25, gpAmount:asDecimal(tcGpAmount), sellTiers:[] };
+  const currentTcRates: TibiaCoinRates = { realPer250:0, realLotAmount:250, realBuyAmount:0, realSellAmount:0, tcAmount:25, gpAmount:asDecimal(tcGpAmount), sellTiers };
   const huntEstimate = estimateHuntValueInReal(reportTotals.profit, currentTcRates);
   const tcRateGpPerTc = huntEstimate.gpPerTc;
   const huntTcEquivalent = huntEstimate.tcEquivalent;
   const huntRealEstimate = huntEstimate.realValue;
   const calculatorTc = asDecimal(calculatorTcAmount);
   const calculatorTrade = estimateTibiaCoinTrade(calculatorTc, currentTcRates);
+  const calculator250Trade = estimateTibiaCoinTrade(250, currentTcRates);
   const calculatorGpValue = calculatorTrade.gpValue;
   const daily = useMemo(() => {
     const days = Array.from({length:7},(_,i) => { const d = new Date(); d.setDate(d.getDate() - (6-i)); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; });
@@ -417,7 +412,7 @@ export function AppScreen({tab}: {tab: Tab}) {
     <View style={s.reportGrid}><View style={s.reportTile}><Zap size={16} color={C.cyan}/><Text style={s.tileLabel}>XP TOTAL</Text><Text style={s.tileValue}>{xpShort(reportTotals.xp)}</Text></View><View style={s.reportTile}><Coins size={16} color={C.orange}/><Text style={s.tileLabel}>LOOT BRUTO</Text><Text style={s.tileValue}>{money(reportTotals.loot)}</Text></View><View style={s.reportTile}><Swords size={16} color={C.lime}/><Text style={s.tileLabel}>SESSÕES</Text><Text style={s.tileValue}>{filtered.length}</Text></View><View style={s.reportTile}><Timer size={16} color={C.cyan}/><Text style={s.tileLabel}>TEMPO DE HUNT</Text><Text style={s.tileValue}>{Math.floor(reportTotals.minutes/60)}h {reportTotals.minutes%60}m</Text></View></View>
     <View style={s.tcRateCard}>
       <View style={s.tcRateHeading}><Coins size={16} color={C.lime}/><Text style={s.tcRateTitle}>VALOR DAS HUNTS EM REAIS</Text></View>
-      <Text style={s.tcRateHint}>Cotação atual: {tcRateGpPerTc>0?`1 TC = ${formatCompactNumber(Math.round(tcRateGpPerTc))} gp`:'configure GP/25 TC'} · venda: {tcRealPer250>0?`${formatCompactReais(tcRealPer250)} por 250 TC`:'configure seus preços de venda'}.</Text>
+      <Text style={s.tcRateHint}>Cotação atual: {tcRateGpPerTc>0?`1 TC = ${gpAmountDisplay(tcRateGpPerTc)} GP`:'configure GP/25 TC'} · venda: {calculator250Trade.saleRevenue!==null?`${formatCompactReais(calculator250Trade.saleRevenue)} por 250 TC`:'configure seus preços de venda'}.</Text>
       <View style={s.tcRateResult}><Text style={s.tcRateResultLabel}>LUCRO DA HUNT EM VALOR ESTIMADO</Text><Text style={s.tcRateResultValue}>{huntRealEstimate===null?'Configure as taxas acima':formatCompactReais(huntRealEstimate)}</Text><Text style={s.tcRateResultMeta}>{huntRealEstimate===null?`${money(reportTotals.profit)} · lucro líquido no período selecionado`:`${formatCompactNumber(huntTcEquivalent)} TC equivalentes · ${money(reportTotals.profit)} líquidos no período`}</Text></View>
       <Pressable onPress={()=>navigate('calculator')} style={s.calculatorReportsLink}><Text style={s.link}>ABRIR CALCULADORA DE TC</Text><ChevronRight size={14} color={C.lime}/></Pressable>
     </View>
@@ -432,11 +427,18 @@ export function AppScreen({tab}: {tab: Tab}) {
     <Text style={s.calculatorIntro}>Cadastre seus preços de venda e veja quanto recebe por qualquer quantidade de TC.</Text>
     <View style={[s.tcRateCard,desktop&&s.calculatorConfigDesktop]}>
       <View style={s.tcRateHeading}><Coins size={17} color={C.lime}/><Text style={s.tcRateTitle}>SEUS VALORES</Text></View>
-      <Text style={s.tcRateHint}>Informe seu preço de venda por TC e a cotação de 25 TC no Tibia.</Text>
+      <Text style={s.tcRateHint}>A cotação é o preço total de 25 TC em GP. Configure abaixo quanto recebe por pacote em cada faixa.</Text>
       <View style={[s.saleTierFields,desktop&&s.saleTierFieldsDesktop]}>
-        <View style={s.tierField}><Text style={s.tcRateLabel}>SEU PREÇO DE VENDA (R$ POR 1 TC)</Text><TextInput value={sellPricePerTc} onChangeText={setSellPricePerTc} placeholder="Ex.: 0,28" placeholderTextColor="#64747D" keyboardType="decimal-pad" style={s.tcRateInput}/></View>
-        <View style={s.tierField}><Text style={s.tcRateLabel}>PREÇO DE 25 TC NO TIBIA (GP)</Text><TextInput value={tcGpAmount} onChangeText={setTcGpAmount} placeholder="Ex.: 48.701" placeholderTextColor="#64747D" keyboardType="numeric" style={s.tcRateInput}/></View>
+        <View style={s.tierField}><Text style={s.tcRateLabel}>PREÇO TOTAL DE 25 TC NO TIBIA (GP)</Text><TextInput value={tcGpAmount} onChangeText={setTcGpAmount} placeholder="Ex.: 48.701" placeholderTextColor="#64747D" keyboardType="numeric" style={s.tcRateInput}/><Text style={s.tcRateHint}>Cotação por TC: {gpAmountDisplay(asDecimal(tcGpAmount)/25)} GP</Text></View>
       </View>
+      <Text style={[s.tcRateLabel,{marginTop:12,marginBottom:8}]}>FAIXAS DE VENDA</Text>
+      {sellTiers.map((tier,index)=><View key={index} style={[s.saleTierRow,desktop&&s.saleTierRowDesktop]}>
+        <View style={s.saleTierInput}><Text style={s.tcRateLabel}>MÍNIMO DA VENDA (TC)</Text><TextInput value={String(tier.minimumTc)} onChangeText={value=>setSellTiers(current=>current.map((item,i)=>i===index?{...item,minimumTc:asInteger(value)}:item))} keyboardType="numeric" style={s.tcRateInput}/></View>
+        <View style={s.saleTierInput}><Text style={s.tcRateLabel}>TC POR PACOTE</Text><TextInput value={String(tier.lotTc)} onChangeText={value=>setSellTiers(current=>current.map((item,i)=>i===index?{...item,lotTc:asInteger(value)}:item))} keyboardType="numeric" style={s.tcRateInput}/></View>
+        <View style={s.saleTierInput}><Text style={s.tcRateLabel}>R$ POR PACOTE</Text><TextInput value={localizedAmount(tier.realPrice,2)} onChangeText={value=>setSellTiers(current=>current.map((item,i)=>i===index?{...item,realPrice:asDecimal(value)}:item))} keyboardType="decimal-pad" style={s.tcRateInput}/></View>
+        <Pressable accessibilityLabel="Remover faixa" onPress={()=>setSellTiers(current=>current.filter((_,i)=>i!==index))} style={s.removeTier}><X size={16} color={C.red}/></Pressable>
+      </View>)}
+      <Pressable onPress={()=>setSellTiers(current=>[...current,{minimumTc:current.length?Math.max(...current.map(tier=>tier.minimumTc))+1:25,lotTc:250,realPrice:0}])} style={s.addTier}><Plus size={15} color={C.lime}/><Text style={s.addTierText}>ADICIONAR FAIXA</Text></Pressable>
     </View>
     <View style={[s.tcRateCard,desktop&&s.calculatorConfigDesktop]}>
       <View style={s.tcRateHeading}><CalculatorIcon size={17} color={C.lime}/><Text style={s.tcRateTitle}>SIMULAR UMA VENDA</Text></View>
@@ -445,9 +447,9 @@ export function AppScreen({tab}: {tab: Tab}) {
       <View style={s.tcPresets}>{[25,250,5000,10000].map(value=><Pressable key={value} onPress={()=>setCalculatorTcAmount(String(value))} style={[s.tcPreset,calculatorTc===value&&s.tcPresetActive]}><Text style={[s.tcPresetText,calculatorTc===value&&s.tcPresetTextActive]}>{value>=1000?(value/1000)+'k':value} TC</Text></Pressable>)}</View>
       <View style={s.saleResultCard}>
         <Text style={s.tcRateResultLabel}>VOCÊ RECEBE APROXIMADAMENTE</Text>
-        <Text style={s.saleResultValue}>{realPerTc>0?formatCompactReais(calculatorTc*realPerTc):'Informe o preço de 1 TC'}</Text>
-        <Text style={s.tcRateResultMeta}>{realPerTc>0?`${n(calculatorTc)} TC × ${formatCompactReais(realPerTc)} por TC`:'Digite quanto você recebe por 1 TC.'}</Text>
-        {tcRateGpPerTc>0&&<View style={s.saleGpLine}><Text style={s.saleGpLabel}>GP necessários para obter {n(calculatorTc)} TC</Text><Text style={s.saleGpValue}>{n(Math.round(calculatorGpValue))} gp</Text></View>}
+        <Text style={s.saleResultValue}>{calculatorTrade.saleRevenue!==null?formatCompactReais(calculatorTrade.saleRevenue):'Configure uma faixa para esta quantidade'}</Text>
+        <Text style={s.tcRateResultMeta}>{calculatorTrade.priceTier?`${n(calculatorTrade.priceTier.lotTc)} TC por pacote · ${formatCompactReais(calculatorTrade.priceTier.realPrice)} por pacote`:'Não há faixa configurada para essa quantidade.'}</Text>
+        {tcRateGpPerTc>0&&<View style={s.saleGpLine}><Text style={s.saleGpLabel}>GP necessários para obter {n(calculatorTc)} TC</Text><Text style={s.saleGpValue}>{gpAmountDisplay(Math.round(calculatorGpValue))} GP</Text></View>}
       </View>
     </View>
   </ScrollView>;
@@ -614,6 +616,11 @@ const s = StyleSheet.create({
   saleTierPair:{flexDirection:'row',gap:10},
   saleTierPairDesktop:{flex:2},
   tierField:{flex:1,minWidth:0,marginBottom:8},
+  saleTierRow:{flexDirection:'column',alignItems:'stretch',gap:7,marginBottom:12,borderBottomWidth:1,borderColor:C.line,paddingBottom:12},
+  saleTierRowDesktop:{flexDirection:'row',alignItems:'flex-end'},
+  saleTierInput:{flex:1,minWidth:0},
+  removeTier:{width:34,height:46,alignItems:'center',justifyContent:'center'},
+  addTier:{height:40,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:7,borderWidth:1,borderColor:C.line,borderRadius:10,marginBottom:4},
   addTierButton:{minHeight:42,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:8,borderRadius:11,borderWidth:1,borderColor:'#586F3C',backgroundColor:'#17241C'},
   addTierText:{color:C.lime,fontSize:9,fontWeight:'900',letterSpacing:.6},
   saleResultCard:{padding:17,borderRadius:14,borderWidth:1,borderColor:'#3A5945',backgroundColor:'#14251D'},
