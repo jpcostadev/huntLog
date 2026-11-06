@@ -34,7 +34,7 @@ function worksheet(rows: CellValue[][]) {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${sheetRows}</sheetData></worksheet>`;
 }
 
-export function buildHuntWorkbook(hunts: Hunt[], rates: TibiaCoinRates = { realPer250: 0, realLotAmount: 1, realBuyAmount: 0, realSellAmount: 0, tcAmount: 1, gpAmount: 0 }) {
+export function buildHuntWorkbook(hunts: Hunt[], rates: TibiaCoinRates = { realPer250: 0, realLotAmount: 250, realBuyAmount: 0, realSellAmount: 0, tcAmount: 25, gpAmount: 0, sellTiers: [] }) {
   const total = hunts.reduce((sum, hunt) => ({
     xp: sum.xp + hunt.xp,
     loot: sum.loot + hunt.loot,
@@ -61,6 +61,7 @@ export function buildHuntWorkbook(hunts: Hunt[], rates: TibiaCoinRates = { realP
       ['Margem em dinheiro por lote (R$)', rates.realSellAmount - rates.realBuyAmount],
       ['Lucro convertido (TC)', overallEstimate.realValue === null ? '' : overallEstimate.tcEquivalent],
       ['Estimativa do lucro (R$)', overallEstimate.realValue ?? 'Configure as taxas no aplicativo'],
+      ...((rates.sellTiers ?? []).map((tier, index) => [`Faixa de venda ${index + 1}`, `${tier.minimumTc} TC+ · ${tier.realPrice} R$ por ${tier.lotTc} TC`] as CellValue[])),
       ['Gerado em', new Date().toLocaleString('pt-BR')],
     ] },
     { name: 'Hunts', rows: [

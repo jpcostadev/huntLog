@@ -19,9 +19,9 @@ Para instalar no Android, baixe o [APK mais recente](https://github.com/jpcostad
 - Importação do texto `Session data` copiado do cliente do Tibia, incluindo horários, XP, loot, supplies, balance, dano, cura, monstros e itens.
 - Abas para Minhas Hunts, Desempenho, Relatórios, Calculadora, Compartilhar e Perfil.
 - Exportação do relatório filtrado em Excel (`.xlsx`), com abas de resumo, hunts, monstros e itens, no Android e no desktop.
-- A aba Calculadora permite informar qualquer lote de TC (1, 50, 250 ou quantidades fracionadas), a cotação em GP no Tibia e quanto você paga e recebe em reais.
-- A calculadora mostra GP por TC, custo de compra, receita de venda e margem em reais; também converte o lucro das hunts para TC e reais pela sua cotação de venda.
-- As taxas de compra, venda e GP/TC ficam salvas no aparelho e aparecem na exportação Excel.
+- A aba Calculadora usa o preço mínimo de 25 TC no Tibia para calcular GP por TC e o equivalente em GP de 250 TC.
+- Cadastre faixas de preço somente para venda em reais (quantidade mínima, tamanho do lote e preço total). A simulação escolhe automaticamente a faixa adequada e mostra quanto você recebe.
+- As cotações de GP e os preços de venda ficam salvos no aparelho; o lucro líquido das hunts também ganha estimativa em reais nos Relatórios e no Excel.
 - Valores grandes na interface aparecem abreviados em `k`, `M`, `B`, `T`, `Q`, `E` e unidades maiores; os campos e a exportação Excel mantêm os números completos.
 - Busca, filtros por período/data e ordenação por lucro, XP e XP por hora.
 - Comparação de desempenho com destaques da melhor e da pior sessão e média do filtro atual.
@@ -84,7 +84,7 @@ npm run desktop:release
 O instalador aparece em:
 
 ```text
-out/desktop/HuntLog-Tibia-Setup-1.0.7-x64.exe
+out/desktop/HuntLog-Tibia-Setup-1.0.8-x64.exe
 ```
 
 O instalador atual não é assinado com certificado de código; o Windows pode mostrar o aviso de publicador desconhecido.

@@ -1,4 +1,4 @@
-import type { TibiaCoinRates } from './models';
+import type { TibiaCoinPriceTier, TibiaCoinRates } from './models';
 
 export type TibiaCoinEstimate = {
   gpPerTc: number;
@@ -8,38 +8,36 @@ export type TibiaCoinEstimate = {
 
 export type TibiaCoinTradeEstimate = {
   gpPerTc: number;
-  buyRealPerTc: number;
-  sellRealPerTc: number;
   gpValue: number;
-  buyCost: number;
-  saleRevenue: number;
-  cashProfit: number;
+  saleRevenue: number | null;
+  priceTier: TibiaCoinPriceTier | null;
 };
+
+export function selectTibiaCoinSaleTier(tcQuantity: number, tiers: TibiaCoinPriceTier[]) {
+  const usable = tiers.filter(tier => tier.minimumTc >= 0 && tier.lotTc > 0 && tier.realPrice > 0).sort((a, b) => a.minimumTc - b.minimumTc);
+  if (!usable.length) return null;
+  const eligible = usable.filter(tier => tier.minimumTc <= tcQuantity);
+  return eligible[eligible.length - 1] ?? usable[0];
+}
 
 export function estimateTibiaCoinTrade(tcQuantity: number, rates: TibiaCoinRates): TibiaCoinTradeEstimate {
   const gpPerTc = rates.tcAmount > 0 ? rates.gpAmount / rates.tcAmount : 0;
-  const cashLot = rates.realLotAmount > 0 ? rates.realLotAmount : 250;
-  const buyRealPerTc = rates.realBuyAmount > 0 ? rates.realBuyAmount / cashLot : 0;
-  const sellRealPerTc = rates.realSellAmount > 0 ? rates.realSellAmount / cashLot : rates.realPer250 / 250;
-  const buyCost = tcQuantity * buyRealPerTc;
-  const saleRevenue = tcQuantity * sellRealPerTc;
+  const priceTier = selectTibiaCoinSaleTier(tcQuantity, rates.sellTiers ?? []);
+  const legacyRealPerTc = rates.realPer250 / 250;
+  const saleRevenue = priceTier
+    ? tcQuantity * priceTier.realPrice / priceTier.lotTc
+    : (rates.sellTiers?.length ? null : tcQuantity * legacyRealPerTc);
   return {
     gpPerTc,
-    buyRealPerTc,
-    sellRealPerTc,
     gpValue: tcQuantity * gpPerTc,
-    buyCost,
-    saleRevenue,
-    cashProfit: saleRevenue - buyCost,
+    saleRevenue: saleRevenue !== null && saleRevenue > 0 ? saleRevenue : null,
+    priceTier,
   };
 }
 
 export function estimateHuntValueInReal(profitGp: number, rates: TibiaCoinRates): TibiaCoinEstimate {
   const gpPerTc = rates.tcAmount > 0 ? rates.gpAmount / rates.tcAmount : 0;
   const tcEquivalent = gpPerTc > 0 ? profitGp / gpPerTc : 0;
-  const sellRealPerTc = rates.realLotAmount > 0 && rates.realSellAmount > 0
-    ? rates.realSellAmount / rates.realLotAmount
-    : rates.realPer250 / 250;
-  const realValue = gpPerTc > 0 && sellRealPerTc > 0 ? tcEquivalent * sellRealPerTc : null;
-  return { gpPerTc, tcEquivalent, realValue };
+  const sale = estimateTibiaCoinTrade(tcEquivalent, rates).saleRevenue;
+  return { gpPerTc, tcEquivalent, realValue: sale };
 }

@@ -46,6 +46,8 @@ export type HuntData = {
   characters: CharacterProfile[];
 };
 
+export type TibiaCoinPriceTier = { minimumTc: number; lotTc: number; realPrice: number };
+
 export type TibiaCoinRates = {
   /** Legacy normalized sell quote retained for old reports and saved settings. */
   realPer250: number;
@@ -54,6 +56,7 @@ export type TibiaCoinRates = {
   realSellAmount: number;
   tcAmount: number;
   gpAmount: number;
+  sellTiers?: TibiaCoinPriceTier[];
 };
 
 export const DEFAULT_TIBIA_COIN_RATES: TibiaCoinRates = {
@@ -61,6 +64,7 @@ export const DEFAULT_TIBIA_COIN_RATES: TibiaCoinRates = {
   realLotAmount: 1,
   realBuyAmount: 0,
   realSellAmount: 0,
-  tcAmount: 1,
+  tcAmount: 25,
   gpAmount: 0,
+  sellTiers: [],
 };

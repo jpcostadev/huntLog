@@ -63,13 +63,15 @@ export async function loadTibiaCoinRates(): Promise<TibiaCoinRates> {
     const legacySell = Number.isFinite(value.realPer250) ? Number(value.realPer250) : 0;
     const realLotAmount = Number.isFinite(value.realLotAmount) && Number(value.realLotAmount) > 0 ? Number(value.realLotAmount) : (legacySell > 0 ? 250 : 1);
     const realSellAmount = Number.isFinite(value.realSellAmount) ? Number(value.realSellAmount) : legacySell;
+    const normalizeTiers = (tiers: TibiaCoinRates['sellTiers']) => (Array.isArray(tiers) ? tiers : []).filter(tier => Number.isFinite(tier.minimumTc) && Number.isFinite(tier.lotTc) && Number(tier.lotTc) > 0 && Number.isFinite(tier.realPrice)).map(tier => ({ minimumTc: Number(tier.minimumTc), lotTc: Number(tier.lotTc), realPrice: Number(tier.realPrice) }));
     return {
       realPer250: realLotAmount > 0 ? realSellAmount * 250 / realLotAmount : legacySell,
       realLotAmount,
       realBuyAmount: Number.isFinite(value.realBuyAmount) ? Number(value.realBuyAmount) : 0,
       realSellAmount,
-      tcAmount: Number.isFinite(value.tcAmount) && Number(value.tcAmount) > 0 ? Number(value.tcAmount) : 1,
+      tcAmount: 25,
       gpAmount: Number.isFinite(value.gpAmount) ? Number(value.gpAmount) : 0,
+      sellTiers: value.sellTiers ? normalizeTiers(value.sellTiers) : (realSellAmount ? [{ minimumTc: realLotAmount, lotTc: realLotAmount, realPrice: realSellAmount }] : []),
     };
   } catch {
     return { ...DEFAULT_TIBIA_COIN_RATES };
