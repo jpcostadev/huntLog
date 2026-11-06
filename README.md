@@ -4,9 +4,9 @@ Aplicativo para registrar hunts do Tibia, acompanhar lucro e experiência, compa
 
 ## Instalar no Windows
 
-Baixe a versão desktop **1.1.8** (inclui a correção do formulário de nomes salvos) pelo link versionado abaixo:
+Baixe a versão desktop **1.1.8 (revisão 2)**, que inclui o espaço corrigido entre o campo e os botões de nomes salvos:
 
-[**Baixar HuntLog Tibia 1.1.8 para Windows (64 bits)**](https://github.com/jpcostadev/huntLog/raw/refs/heads/main/Instalador/HuntLog-Tibia-Setup-1.1.8-x64.exe)
+[**Baixar HuntLog Tibia 1.1.8 para Windows (64 bits)**](https://github.com/jpcostadev/huntLog/raw/refs/heads/main/Instalador/HuntLog-Tibia-Setup-1.1.8-r2-x64.exe)
 
 O instalador atualizado mais recente também fica disponível em [Instalador](Instalador/README.md).
 
