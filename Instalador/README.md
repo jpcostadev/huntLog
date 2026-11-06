@@ -8,9 +8,9 @@ O APK inclui as mesmas abas, relatórios, exportação Excel e calculadora de TC
 
 ## Windows 64 bits
 
-[**Clique aqui para baixar e instalar a versão mais recente**](https://github.com/jpcostadev/huntLog/raw/refs/heads/main/Instalador/HuntLog-Tibia-Setup-latest.exe)
+[**Baixar HuntLog Tibia 1.1.8 para Windows (64 bits)**](https://github.com/jpcostadev/huntLog/raw/refs/heads/main/Instalador/HuntLog-Tibia-Setup-1.1.8-x64.exe)
 
-Arquivo disponível nesta pasta: `HuntLog-Tibia-Setup-latest.exe`.
+Esta versão inclui a correção do layout dos botões para salvar e escolher nomes de hunts. O alias [`HuntLog-Tibia-Setup-latest.exe`](HuntLog-Tibia-Setup-latest.exe) também é atualizado junto com o instalador versionado.
 
 Após o download, abra o `.exe` e siga as instruções na tela. O Windows pode mostrar um aviso de publicador desconhecido porque o instalador ainda não tem assinatura de código.
 
