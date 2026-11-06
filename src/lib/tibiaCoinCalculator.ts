@@ -4,6 +4,10 @@ export type TibiaCoinEstimate = {
   gpPerTc: number;
   tcEquivalent: number;
   realValue: number | null;
+  packageCount: number;
+  soldTc: number;
+  remainingTc: number;
+  priceTier: TibiaCoinPriceTier | null;
 };
 
 export type TibiaCoinTradeEstimate = {
@@ -11,6 +15,9 @@ export type TibiaCoinTradeEstimate = {
   gpValue: number;
   saleRevenue: number | null;
   priceTier: TibiaCoinPriceTier | null;
+  packageCount: number;
+  soldTc: number;
+  remainingTc: number;
 };
 
 export function selectTibiaCoinSaleTier(tcQuantity: number, tiers: TibiaCoinPriceTier[]) {
@@ -24,20 +31,26 @@ export function estimateTibiaCoinTrade(tcQuantity: number, rates: TibiaCoinRates
   const gpPerTc = rates.tcAmount > 0 ? rates.gpAmount / rates.tcAmount : 0;
   const priceTier = selectTibiaCoinSaleTier(tcQuantity, rates.sellTiers ?? []);
   const legacyRealPerTc = rates.realPer250 / 250;
+  const packageCount = priceTier && tcQuantity > 0 ? Math.floor(tcQuantity / priceTier.lotTc + 1e-9) : 0;
+  const soldTc = priceTier ? packageCount * priceTier.lotTc : 0;
+  const remainingTc = priceTier ? Math.max(0, tcQuantity - soldTc) : 0;
   const saleRevenue = priceTier
-    ? tcQuantity * priceTier.realPrice / priceTier.lotTc
+    ? packageCount * priceTier.realPrice
     : (rates.sellTiers?.length ? null : tcQuantity * legacyRealPerTc);
   return {
     gpPerTc,
     gpValue: tcQuantity * gpPerTc,
-    saleRevenue: saleRevenue !== null && saleRevenue > 0 ? saleRevenue : null,
+    saleRevenue: saleRevenue !== null && (saleRevenue > 0 || Boolean(priceTier)) ? saleRevenue : null,
     priceTier,
+    packageCount,
+    soldTc,
+    remainingTc,
   };
 }
 
 export function estimateHuntValueInReal(profitGp: number, rates: TibiaCoinRates): TibiaCoinEstimate {
   const gpPerTc = rates.tcAmount > 0 ? rates.gpAmount / rates.tcAmount : 0;
   const tcEquivalent = gpPerTc > 0 ? profitGp / gpPerTc : 0;
-  const sale = estimateTibiaCoinTrade(tcEquivalent, rates).saleRevenue;
-  return { gpPerTc, tcEquivalent, realValue: sale };
+  const trade = estimateTibiaCoinTrade(tcEquivalent, rates);
+  return { gpPerTc, tcEquivalent, realValue: trade.saleRevenue, packageCount: trade.packageCount, soldTc: trade.soldTc, remainingTc: trade.remainingTc, priceTier: trade.priceTier };
 }

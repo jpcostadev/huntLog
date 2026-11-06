@@ -54,22 +54,25 @@ export function buildHuntWorkbook(hunts: Hunt[], rates: TibiaCoinRates = { realP
       ['Lote usado para calcular (TC)', rates.tcAmount],
       ['Preço do lote (gp)', rates.gpAmount],
       ['Taxa calculada (gp/TC)', overallEstimate.gpPerTc],
-      ['Preço de venda informado (R$ / TC)', rates.realSellAmount],
-      ['Preço de venda estimado (R$ / 250 TC)', rates.realPer250],
-      ['Preço de 25 TC no Tibia (gp)', rates.gpAmount],
+      ['Faixa aplicada ao lucro (TC mínimos)', overallEstimate.priceTier?.minimumTc ?? 'Nenhuma faixa aplicável'],
+      ['Pacote da faixa aplicada (TC)', overallEstimate.priceTier?.lotTc ?? ''],
+      ['Preço do pacote aplicado (R$)', overallEstimate.priceTier?.realPrice ?? ''],
       ['Lucro convertido (TC)', overallEstimate.realValue === null ? '' : overallEstimate.tcEquivalent],
+      ['Pacotes completos estimados', overallEstimate.packageCount],
+      ['TC incluídos nos pacotes', overallEstimate.soldTc],
+      ['TC restantes fora de pacote', overallEstimate.remainingTc],
       ['Estimativa do lucro (R$)', overallEstimate.realValue ?? 'Configure as taxas no aplicativo'],
       ['Gerado em', new Date().toLocaleString('pt-BR')],
     ] },
     { name: 'Hunts', rows: [
-      ['Data', 'Personagem', 'Vocação', 'Level', 'Local / Respawn', 'Duração (min)', 'XP ganho', 'XP/h', 'XP bruto', 'XP bruto/h', 'Loot (gp)', 'Supplies (gp)', 'Lucro (gp)', 'Balance (gp)', 'Dano', 'Dano/h', 'Cura', 'Cura/h', 'Equivalente TC', 'Estimativa (R$)'],
+      ['Data', 'Personagem', 'Vocação', 'Level', 'Local / Respawn', 'Duração (min)', 'XP ganho', 'XP/h', 'XP bruto', 'XP bruto/h', 'Loot (gp)', 'Supplies (gp)', 'Lucro (gp)', 'Balance (gp)', 'Dano', 'Dano/h', 'Cura', 'Cura/h', 'Equivalente TC', 'Pacotes TC', 'TC em pacotes', 'TC restantes', 'Estimativa (R$)'],
       ...hunts.map(hunt => {
         const estimate = estimateHuntValueInReal(hunt.loot - hunt.supplies, rates);
         return [hunt.date, hunt.character, hunt.vocation, hunt.level, hunt.location, hunt.duration, hunt.xp,
         hunt.session?.xpPerHour ?? Math.round(hunt.duration ? hunt.xp * 60 / hunt.duration : 0), hunt.session?.rawXpGain ?? 0,
         hunt.session?.rawXpPerHour ?? 0, hunt.loot, hunt.supplies, hunt.loot - hunt.supplies, hunt.session?.balance ?? 0,
         hunt.session?.damage ?? 0, hunt.session?.damagePerHour ?? 0, hunt.session?.healing ?? 0, hunt.session?.healingPerHour ?? 0,
-        estimate.gpPerTc > 0 ? estimate.tcEquivalent : '', estimate.realValue ?? '']
+        estimate.gpPerTc > 0 ? estimate.tcEquivalent : '', estimate.packageCount, estimate.soldTc, estimate.remainingTc, estimate.realValue ?? '']
       }),
     ] },
     { name: 'Monstros', rows: [

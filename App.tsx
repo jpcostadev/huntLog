@@ -168,7 +168,6 @@ export function AppScreen({tab}: {tab: Tab}) {
   const huntRealEstimate = huntEstimate.realValue;
   const calculatorTc = asDecimal(calculatorTcAmount);
   const calculatorTrade = estimateTibiaCoinTrade(calculatorTc, currentTcRates);
-  const calculator250Trade = estimateTibiaCoinTrade(250, currentTcRates);
   const calculatorGpValue = calculatorTrade.gpValue;
   const daily = useMemo(() => {
     const days = Array.from({length:7},(_,i) => { const d = new Date(); d.setDate(d.getDate() - (6-i)); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; });
@@ -412,8 +411,8 @@ export function AppScreen({tab}: {tab: Tab}) {
     <View style={s.reportGrid}><View style={s.reportTile}><Zap size={16} color={C.cyan}/><Text style={s.tileLabel}>XP TOTAL</Text><Text style={s.tileValue}>{xpShort(reportTotals.xp)}</Text></View><View style={s.reportTile}><Coins size={16} color={C.orange}/><Text style={s.tileLabel}>LOOT BRUTO</Text><Text style={s.tileValue}>{money(reportTotals.loot)}</Text></View><View style={s.reportTile}><Swords size={16} color={C.lime}/><Text style={s.tileLabel}>SESSÕES</Text><Text style={s.tileValue}>{filtered.length}</Text></View><View style={s.reportTile}><Timer size={16} color={C.cyan}/><Text style={s.tileLabel}>TEMPO DE HUNT</Text><Text style={s.tileValue}>{Math.floor(reportTotals.minutes/60)}h {reportTotals.minutes%60}m</Text></View></View>
     <View style={s.tcRateCard}>
       <View style={s.tcRateHeading}><Coins size={16} color={C.lime}/><Text style={s.tcRateTitle}>VALOR DAS HUNTS EM REAIS</Text></View>
-      <Text style={s.tcRateHint}>Cotação atual: {tcRateGpPerTc>0?`1 TC = ${gpAmountDisplay(tcRateGpPerTc)} GP`:'configure GP/25 TC'} · venda: {calculator250Trade.saleRevenue!==null?`${formatCompactReais(calculator250Trade.saleRevenue)} por 250 TC`:'configure seus preços de venda'}.</Text>
-      <View style={s.tcRateResult}><Text style={s.tcRateResultLabel}>LUCRO DA HUNT EM VALOR ESTIMADO</Text><Text style={s.tcRateResultValue}>{huntRealEstimate===null?'Configure as taxas acima':formatCompactReais(huntRealEstimate)}</Text><Text style={s.tcRateResultMeta}>{huntRealEstimate===null?`${money(reportTotals.profit)} · lucro líquido no período selecionado`:`${formatCompactNumber(huntTcEquivalent)} TC equivalentes · ${money(reportTotals.profit)} líquidos no período`}</Text></View>
+      <Text style={s.tcRateHint}>Cotação: {tcRateGpPerTc>0?`1 TC = ${gpAmountDisplay(tcRateGpPerTc)} GP`:'configure GP/25 TC'} · faixa aplicada: {huntEstimate.priceTier?`${formatCompactReais(huntEstimate.priceTier.realPrice)} por pacote de ${n(huntEstimate.priceTier.lotTc)} TC`:'nenhuma faixa disponível para esta quantidade'}.</Text>
+      <View style={s.tcRateResult}><Text style={s.tcRateResultLabel}>LUCRO DA HUNT EM VALOR ESTIMADO</Text><Text style={s.tcRateResultValue}>{huntRealEstimate===null?'Configure as taxas acima':formatCompactReais(huntRealEstimate)}</Text><Text style={s.tcRateResultMeta}>{huntRealEstimate===null?`${money(reportTotals.profit)} · lucro líquido no período selecionado`:`${formatCompactNumber(huntTcEquivalent)} TC equivalentes · ${n(huntEstimate.packageCount)} pacotes (${n(huntEstimate.soldTc)} TC) · ${n(huntEstimate.remainingTc)} TC fora do pacote · ${money(reportTotals.profit)} líquidos`}</Text></View>
       <Pressable onPress={()=>navigate('calculator')} style={s.calculatorReportsLink}><Text style={s.link}>ABRIR CALCULADORA DE TC</Text><ChevronRight size={14} color={C.lime}/></Pressable>
     </View>
     <View style={s.sectionHead}><Text style={s.sectionTitle}>XP NOS ÚLTIMOS 7 DIAS</Text><Text style={s.chartLegend}><View style={s.legendDot}/> XP</Text></View>
@@ -448,7 +447,7 @@ export function AppScreen({tab}: {tab: Tab}) {
       <View style={s.saleResultCard}>
         <Text style={s.tcRateResultLabel}>VOCÊ RECEBE APROXIMADAMENTE</Text>
         <Text style={s.saleResultValue}>{calculatorTrade.saleRevenue!==null?formatCompactReais(calculatorTrade.saleRevenue):'Configure uma faixa para esta quantidade'}</Text>
-        <Text style={s.tcRateResultMeta}>{calculatorTrade.priceTier?`${n(calculatorTrade.priceTier.lotTc)} TC por pacote · ${formatCompactReais(calculatorTrade.priceTier.realPrice)} por pacote`:'Não há faixa configurada para essa quantidade.'}</Text>
+        <Text style={s.tcRateResultMeta}>{calculatorTrade.priceTier?`${n(calculatorTrade.packageCount)} pacotes de ${n(calculatorTrade.priceTier.lotTc)} TC · ${n(calculatorTrade.soldTc)} TC vendidos · ${n(calculatorTrade.remainingTc)} TC fora do pacote · ${formatCompactReais(calculatorTrade.priceTier.realPrice)} por pacote`:'Não há faixa configurada para essa quantidade.'}</Text>
         {tcRateGpPerTc>0&&<View style={s.saleGpLine}><Text style={s.saleGpLabel}>GP necessários para obter {n(calculatorTc)} TC</Text><Text style={s.saleGpValue}>{gpAmountDisplay(Math.round(calculatorGpValue))} GP</Text></View>}
       </View>
     </View>
