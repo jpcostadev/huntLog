@@ -1,6 +1,7 @@
-import type { CharacterInput, CharacterProfile, Hunt, HuntData, HuntInput } from './models';
+import { DEFAULT_TIBIA_COIN_RATES, type CharacterInput, type CharacterProfile, type Hunt, type HuntData, type HuntInput, type TibiaCoinRates } from './models';
 
 const STORAGE_KEY = 'huntlog.local.v1';
+const TC_RATES_KEY = 'huntlog.tibia-coin-rates.v1';
 type StoredData = { hunts: Hunt[]; characters: CharacterProfile[] };
 
 function read(): StoredData {
@@ -17,6 +18,24 @@ function read(): StoredData {
 
 function write(data: StoredData) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+export async function loadTibiaCoinRates(): Promise<TibiaCoinRates> {
+  if (typeof localStorage === 'undefined') return { ...DEFAULT_TIBIA_COIN_RATES };
+  try {
+    const value = JSON.parse(localStorage.getItem(TC_RATES_KEY) ?? 'null') as Partial<TibiaCoinRates> | null;
+    return {
+      realPer250: Number.isFinite(value?.realPer250) ? Number(value?.realPer250) : 0,
+      tcAmount: Number.isFinite(value?.tcAmount) && Number(value?.tcAmount) > 0 ? Number(value?.tcAmount) : 1,
+      gpAmount: Number.isFinite(value?.gpAmount) ? Number(value?.gpAmount) : 0,
+    };
+  } catch {
+    return { ...DEFAULT_TIBIA_COIN_RATES };
+  }
+}
+
+export async function saveTibiaCoinRates(rates: TibiaCoinRates) {
+  if (typeof localStorage !== 'undefined') localStorage.setItem(TC_RATES_KEY, JSON.stringify(rates));
 }
 
 function refreshProfiles(hunts: Hunt[], profiles: CharacterProfile[]): CharacterProfile[] {

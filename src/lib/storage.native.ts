@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { CharacterInput, CharacterProfile, Hunt, HuntData, HuntInput } from './models';
+import { DEFAULT_TIBIA_COIN_RATES, type CharacterInput, type CharacterProfile, type Hunt, type HuntData, type HuntInput, type TibiaCoinRates } from './models';
 
 const dbPromise = SQLite.openDatabaseAsync('tibia-hunts.db');
 
@@ -25,6 +25,10 @@ async function database() {
       level INTEGER NOT NULL DEFAULT 0,
       is_primary INTEGER NOT NULL DEFAULT 0
     );
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY NOT NULL,
+      value TEXT NOT NULL
+    );
   `);
 
   const columns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(hunts)');
@@ -48,6 +52,31 @@ async function database() {
     );
   }
   return db;
+}
+
+export async function loadTibiaCoinRates(): Promise<TibiaCoinRates> {
+  const db = await database();
+  const row = await db.getFirstAsync<{ value: string }>('SELECT value FROM app_settings WHERE key = ?', 'tibia_coin_rates');
+  if (!row) return { ...DEFAULT_TIBIA_COIN_RATES };
+  try {
+    const value = JSON.parse(row.value) as Partial<TibiaCoinRates>;
+    return {
+      realPer250: Number.isFinite(value.realPer250) ? Number(value.realPer250) : 0,
+      tcAmount: Number.isFinite(value.tcAmount) && Number(value.tcAmount) > 0 ? Number(value.tcAmount) : 1,
+      gpAmount: Number.isFinite(value.gpAmount) ? Number(value.gpAmount) : 0,
+    };
+  } catch {
+    return { ...DEFAULT_TIBIA_COIN_RATES };
+  }
+}
+
+export async function saveTibiaCoinRates(rates: TibiaCoinRates) {
+  const db = await database();
+  await db.runAsync(
+    `INSERT INTO app_settings (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value=excluded.value`,
+    'tibia_coin_rates', JSON.stringify(rates),
+  );
 }
 
 export async function loadHuntData(): Promise<HuntData> {

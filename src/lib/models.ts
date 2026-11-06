@@ -45,3 +45,15 @@ export type HuntData = {
   hunts: Hunt[];
   characters: CharacterProfile[];
 };
+
+export type TibiaCoinRates = {
+  realPer250: number;
+  tcAmount: number;
+  gpAmount: number;
+};
+
+export const DEFAULT_TIBIA_COIN_RATES: TibiaCoinRates = {
+  realPer250: 0,
+  tcAmount: 1,
+  gpAmount: 0,
+};

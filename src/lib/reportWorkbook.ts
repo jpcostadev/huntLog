@@ -1,5 +1,6 @@
 import { strToU8, zipSync } from 'fflate';
-import type { Hunt } from './models';
+import type { Hunt, TibiaCoinRates } from './models';
+import { estimateHuntValueInReal } from './tibiaCoinCalculator';
 
 type CellValue = string | number;
 type Sheet = { name: string; rows: CellValue[][] };
@@ -33,13 +34,14 @@ function worksheet(rows: CellValue[][]) {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${sheetRows}</sheetData></worksheet>`;
 }
 
-export function buildHuntWorkbook(hunts: Hunt[]) {
+export function buildHuntWorkbook(hunts: Hunt[], rates: TibiaCoinRates = { realPer250: 0, tcAmount: 1, gpAmount: 0 }) {
   const total = hunts.reduce((sum, hunt) => ({
     xp: sum.xp + hunt.xp,
     loot: sum.loot + hunt.loot,
     supplies: sum.supplies + hunt.supplies,
     minutes: sum.minutes + hunt.duration,
   }), { xp: 0, loot: 0, supplies: 0, minutes: 0 });
+  const overallEstimate = estimateHuntValueInReal(total.loot - total.supplies, rates);
   const sheets: Sheet[] = [
     { name: 'Resumo', rows: [
       ['HUNTLOG TIBIA · RELATÓRIO DE HUNTS'],
@@ -49,14 +51,24 @@ export function buildHuntWorkbook(hunts: Hunt[]) {
       ['Supplies (gp)', total.supplies],
       ['Lucro líquido (gp)', total.loot - total.supplies],
       ['Tempo total (minutos)', total.minutes],
+      ['Lote usado para calcular (TC)', rates.tcAmount],
+      ['Preço do lote (gp)', rates.gpAmount],
+      ['Taxa calculada (gp/TC)', overallEstimate.gpPerTc],
+      ['Preço informado (R$ / 250 TC)', rates.realPer250],
+      ['Lucro convertido (TC)', overallEstimate.realValue === null ? '' : overallEstimate.tcEquivalent],
+      ['Estimativa do lucro (R$)', overallEstimate.realValue ?? 'Configure as taxas no aplicativo'],
       ['Gerado em', new Date().toLocaleString('pt-BR')],
     ] },
     { name: 'Hunts', rows: [
-      ['Data', 'Personagem', 'Vocação', 'Level', 'Local / Respawn', 'Duração (min)', 'XP ganho', 'XP/h', 'XP bruto', 'XP bruto/h', 'Loot (gp)', 'Supplies (gp)', 'Lucro (gp)', 'Balance (gp)', 'Dano', 'Dano/h', 'Cura', 'Cura/h'],
-      ...hunts.map(hunt => [hunt.date, hunt.character, hunt.vocation, hunt.level, hunt.location, hunt.duration, hunt.xp,
+      ['Data', 'Personagem', 'Vocação', 'Level', 'Local / Respawn', 'Duração (min)', 'XP ganho', 'XP/h', 'XP bruto', 'XP bruto/h', 'Loot (gp)', 'Supplies (gp)', 'Lucro (gp)', 'Balance (gp)', 'Dano', 'Dano/h', 'Cura', 'Cura/h', 'Equivalente TC', 'Estimativa (R$)'],
+      ...hunts.map(hunt => {
+        const estimate = estimateHuntValueInReal(hunt.loot - hunt.supplies, rates);
+        return [hunt.date, hunt.character, hunt.vocation, hunt.level, hunt.location, hunt.duration, hunt.xp,
         hunt.session?.xpPerHour ?? Math.round(hunt.duration ? hunt.xp * 60 / hunt.duration : 0), hunt.session?.rawXpGain ?? 0,
         hunt.session?.rawXpPerHour ?? 0, hunt.loot, hunt.supplies, hunt.loot - hunt.supplies, hunt.session?.balance ?? 0,
-        hunt.session?.damage ?? 0, hunt.session?.damagePerHour ?? 0, hunt.session?.healing ?? 0, hunt.session?.healingPerHour ?? 0]),
+        hunt.session?.damage ?? 0, hunt.session?.damagePerHour ?? 0, hunt.session?.healing ?? 0, hunt.session?.healingPerHour ?? 0,
+        estimate.gpPerTc > 0 ? estimate.tcEquivalent : '', estimate.realValue ?? '']
+      }),
     ] },
     { name: 'Monstros', rows: [
       ['Data', 'Personagem', 'Local / Respawn', 'Quantidade', 'Monstro'],

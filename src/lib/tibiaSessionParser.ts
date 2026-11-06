@@ -24,14 +24,25 @@ function entriesIn(text: string, heading: string): SessionEntry[] {
 export function parseTibiaSession(source: string): ParsedTibiaSession {
   const text = source.replace(/[\uFEFF\u200B]/g, '').replace(/\r/g, '').trim();
   if (!text) throw new Error('Cole o texto completo da sessão copiado do Tibia.');
-  const period = text.match(/^\s*Session data:\s*From\s+(\d{4}-\d{2}-\d{2}),\s*(\d{2}:\d{2}:\d{2})\s+to\s+(\d{4}-\d{2}-\d{2}),\s*(\d{2}:\d{2}:\d{2})/im);
+  const fullPeriod = text.match(/^\s*Session data:\s*From\s+(\d{4}-\d{2}-\d{2}),\s*(\d{2}:\d{2}:\d{2})\s+to\s+(\d{4}-\d{2}-\d{2}),\s*(\d{2}:\d{2}:\d{2})/im);
+  const clippedPeriod = text.match(/^\s*(\d{2}:\d{2}:\d{2})\s+to\s+(\d{4}-\d{2}-\d{2}),\s*(\d{2}:\d{2}:\d{2})/im);
   const xp = valueFor(text, 'XP Gain');
   const loot = valueFor(text, 'Loot');
   const supplies = valueFor(text, 'Supplies');
-  if (!period) throw new Error('Não encontrei o cabeçalho “Session data: From…”. Copie desde a primeira linha da sessão no Tibia, incluindo os horários.');
+  if (!fullPeriod && !clippedPeriod) throw new Error('Não encontrei o período da hunt. Copie a sessão desde a linha com a data e os horários.');
   if (!/^\s*Session:\s*\d+:\d{2}h/im.test(text)) throw new Error('Não encontrei a duração “Session:”. Copie a sessão completa, não apenas a lista de itens.');
   if (!/^\s*XP Gain:\s*[\d,.]+/im.test(text)) throw new Error('Não encontrei “XP Gain”. Copie novamente a sessão inteira desde a primeira linha.');
-  const [, startDate, startTime, endDate, endTime] = period;
+  let startDate: string, startTime: string, endDate: string, endTime: string;
+  if (fullPeriod) [, startDate, startTime, endDate, endTime] = fullPeriod;
+  else {
+    [, startTime, endDate, endTime] = clippedPeriod!;
+    startDate = endDate;
+    if (startTime > endTime) {
+      const previousDay = new Date(`${endDate}T00:00:00Z`);
+      previousDay.setUTCDate(previousDay.getUTCDate() - 1);
+      startDate = `${previousDay.getUTCFullYear()}-${String(previousDay.getUTCMonth() + 1).padStart(2, '0')}-${String(previousDay.getUTCDate()).padStart(2, '0')}`;
+    }
+  }
   const durationMatch = text.match(/^\s*Session:\s*(\d+):(\d{2})h/im);
   const startMs = new Date(`${startDate}T${startTime}`).getTime();
   const endMs = new Date(`${endDate}T${endTime}`).getTime();

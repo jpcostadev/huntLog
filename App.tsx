@@ -6,12 +6,14 @@ import {
 import * as Sharing from 'expo-sharing';
 import { File, Paths } from 'expo-file-system';
 import { buildHuntWorkbook } from './src/lib/reportWorkbook';
+import { estimateHuntValueInReal } from './src/lib/tibiaCoinCalculator';
+import { formatCompactNumber, formatCompactReais } from './src/lib/numberFormat';
 import { router } from 'expo-router';
 import { captureRef } from 'react-native-view-shot';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { deleteHunt as deleteStoredHunt, loadHuntData, saveCharacter as persistCharacter, saveHunt as persistHunt } from './src/lib/storage';
-import type { CharacterInput, CharacterProfile, Hunt, TibiaSession } from './src/lib/models';
+import { deleteHunt as deleteStoredHunt, loadHuntData, loadTibiaCoinRates, saveCharacter as persistCharacter, saveHunt as persistHunt, saveTibiaCoinRates } from './src/lib/storage';
+import type { CharacterInput, CharacterProfile, Hunt, TibiaCoinRates, TibiaSession } from './src/lib/models';
 import { parseTibiaSession } from './src/lib/tibiaSessionParser';
 import {
   Activity, AlertCircle, ArrowDownLeft, ArrowUpRight, CalendarDays, Check, ChevronRight, Coins, Crown,
@@ -29,11 +31,22 @@ const C = {
 };
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
 const n = (v: number) => new Intl.NumberFormat('pt-BR').format(v || 0);
-const money = (v: number) => ` ${new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }).format(v || 0)} gp`;
-const xpShort = (v: number) => v >= 1000000 ? `${(v/1000000).toFixed(1).replace('.', ',')}kk` : v >= 1000 ? `${(v/1000).toFixed(0)}k` : n(v);
+const money = (v: number) => ` ${formatCompactNumber(v)} gp`;
+const xpShort = (v: number) => formatCompactNumber(v);
 // XP, levels, gold and duration are whole numbers. Ignore pasted grouping
 // separators, so both "1500000" and "1.500.000" become the same value.
 const asInteger = (s: string) => Number(s.replace(/\D/g, '')) || 0;
+const asDecimal = (raw: string) => {
+  let value = raw.replace(/[^\d,.-]/g, '');
+  const comma = value.lastIndexOf(','), dot = value.lastIndexOf('.');
+  if (comma >= 0 && dot >= 0) value = comma > dot ? value.replace(/\./g, '').replace(',', '.') : value.replace(/,/g, '');
+  else if (comma >= 0) value = value.replace(',', '.');
+  else if (dot >= 0 && value.length - dot - 1 === 3) value = value.replace(/\./g, '');
+  else if ((value.match(/\./g) ?? []).length > 1) value = value.replace(/\./g, '');
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+};
+const localizedAmount = (value: number, fractionDigits = 6, minimumFractionDigits = 0) => new Intl.NumberFormat('pt-BR', { minimumFractionDigits, maximumFractionDigits: fractionDigits }).format(value);
 const toDate = (s: string) => { const [y,m,d] = s.split('-').map(Number); return new Date(y,m-1,d); };
 const dateLabel = (s: string) => toDate(s).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }).replace('.', '').toUpperCase();
 const performanceValue = (h: Hunt, metric: PerformanceMetric) => {
@@ -43,7 +56,7 @@ const performanceValue = (h: Hunt, metric: PerformanceMetric) => {
   if (metric === 'xpHour') return h.duration > 0 ? h.xp * 60 / h.duration : 0;
   return h.duration > 0 ? profit * 60 / h.duration : 0;
 };
-const performanceNumber = (value: number, metric: PerformanceMetric) => metric === 'profit' || metric === 'profitHour' ? `${n(Math.round(value))} gp` : `${n(Math.round(value))} XP`;
+const performanceNumber = (value: number, metric: PerformanceMetric) => metric === 'profit' || metric === 'profitHour' ? `${formatCompactNumber(Math.round(value))} gp` : `${formatCompactNumber(Math.round(value))} XP`;
 
 export function AppScreen({tab}: {tab: Tab}) {
   const [hunts, setHunts] = useState<Hunt[]>([]);
@@ -75,8 +88,13 @@ export function AppScreen({tab}: {tab: Tab}) {
   const [importError, setImportError] = useState('');
   const [reportExporting, setReportExporting] = useState(false);
   const [reportExportError, setReportExportError] = useState('');
+  const [tcRealPer250, setTcRealPer250] = useState('');
+  const [tcAmount, setTcAmount] = useState('1');
+  const [tcGpAmount, setTcGpAmount] = useState('');
+  const [tcRatesLoaded, setTcRatesLoaded] = useState(false);
   const { width: screenWidth } = useWindowDimensions();
   const desktop = Platform.OS === 'web' && screenWidth >= 900;
+  const hasSessionPeriod = /^\s*Session data:\s*From/im.test(sessionText) || /^\s*\d{2}:\d{2}:\d{2}\s+to\s+\d{4}-\d{2}-\d{2},\s*\d{2}:\d{2}:\d{2}/im.test(sessionText);
   const cardRef = useRef<React.ElementRef<typeof View>>(null);
   const [form, setForm] = useState({ date: today(), character: '', vocation: 'EK', level: '', location: '', duration: '60', xp: '', loot: '', supplies: '', primary: false });
 
@@ -91,6 +109,23 @@ export function AppScreen({tab}: {tab: Tab}) {
       .catch(() => setToast('Não foi possível carregar os dados salvos.'));
   }, []);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(''), 2600); return () => clearTimeout(t); }, [toast]);
+  useEffect(() => {
+    let active = true;
+    loadTibiaCoinRates().then(rates => {
+      if (!active) return;
+      setTcRealPer250(rates.realPer250 ? localizedAmount(rates.realPer250, 2, 2) : '');
+      setTcAmount(rates.tcAmount ? localizedAmount(rates.tcAmount) : '1');
+      setTcGpAmount(rates.gpAmount ? localizedAmount(rates.gpAmount) : '');
+      setTcRatesLoaded(true);
+    }).catch(() => { if (active) setTcRatesLoaded(true); });
+    return () => { active = false; };
+  }, []);
+  useEffect(() => {
+    if (!tcRatesLoaded) return;
+    const rates: TibiaCoinRates = { realPer250: asDecimal(tcRealPer250), tcAmount: asDecimal(tcAmount), gpAmount: asDecimal(tcGpAmount) };
+    const timer = setTimeout(() => { void saveTibiaCoinRates(rates).catch(() => setToast('Não consegui salvar as taxas de TC.')); }, 550);
+    return () => clearTimeout(timer);
+  }, [tcRatesLoaded, tcRealPer250, tcAmount, tcGpAmount]);
 
   const selectedHunt = hunts.find(h => h.id === selected) ?? null;
   const detailHunt = hunts.find(h => h.id === detailHuntId) ?? null;
@@ -126,6 +161,10 @@ export function AppScreen({tab}: {tab: Tab}) {
   }, [hunts, period]);
   const totals = (rows: Hunt[]) => rows.reduce((a,h) => ({ xp:a.xp+h.xp, loot:a.loot+h.loot, supplies:a.supplies+h.supplies, profit:a.profit+h.loot-h.supplies, minutes:a.minutes+h.duration }), { xp:0, loot:0, supplies:0, profit:0, minutes:0 });
   const allTotals = totals(hunts), reportTotals = totals(filtered);
+  const huntEstimate = estimateHuntValueInReal(reportTotals.profit, { realPer250: asDecimal(tcRealPer250), tcAmount: asDecimal(tcAmount), gpAmount: asDecimal(tcGpAmount) });
+  const tcRateGpPerTc = huntEstimate.gpPerTc;
+  const huntTcEquivalent = huntEstimate.tcEquivalent;
+  const huntRealEstimate = huntEstimate.realValue;
   const daily = useMemo(() => {
     const days = Array.from({length:7},(_,i) => { const d = new Date(); d.setDate(d.getDate() - (6-i)); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; });
     return days.map(date => ({ date, xp: hunts.filter(h=>h.date===date).reduce((s,h)=>s+h.xp,0) }));
@@ -201,7 +240,7 @@ export function AppScreen({tab}: {tab: Tab}) {
     setReportExportError('');
     try {
       const fileName = `huntlog-relatorio-${today()}.xlsx`;
-      const bytes = buildHuntWorkbook(filtered);
+      const bytes = buildHuntWorkbook(filtered, { realPer250: asDecimal(tcRealPer250), tcAmount: asDecimal(tcAmount), gpAmount: asDecimal(tcGpAmount) });
       if (Platform.OS === 'web') {
         const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         const url = URL.createObjectURL(blob);
@@ -365,7 +404,19 @@ export function AppScreen({tab}: {tab: Tab}) {
     <Pressable disabled={reportExporting||!filtered.length} onPress={exportReport} style={[s.reportExportButton,(!filtered.length||reportExporting)&&s.reportExportButtonDisabled]}><FileSpreadsheet size={17} color={C.lime}/><Text style={s.reportExportText}>{reportExporting?'GERANDO ARQUIVO…':'EXPORTAR RELATÓRIO EXCEL (.XLSX)'}</Text></Pressable>
     {reportExportError?<Text style={s.reportExportError}>{reportExportError}</Text>:null}
     <View style={s.reportHero}><View><Text style={s.reportLabel}>LUCRO LÍQUIDO</Text><Text style={s.reportProfit}>{money(reportTotals.profit)}</Text><View style={s.profitTag}><ArrowUpRight size={13} color={C.green}/><Text style={s.profitTagText}>NO PERÍODO SELECIONADO</Text></View></View><View style={s.reportHeroIcon}><TrendingUp size={22} color={C.green}/></View></View>
-    <View style={s.reportGrid}><View style={s.reportTile}><Zap size={16} color={C.cyan}/><Text style={s.tileLabel}>XP TOTAL</Text><Text style={s.tileValue}>{n(reportTotals.xp)}</Text></View><View style={s.reportTile}><Coins size={16} color={C.orange}/><Text style={s.tileLabel}>LOOT BRUTO</Text><Text style={s.tileValue}>{money(reportTotals.loot)}</Text></View><View style={s.reportTile}><Swords size={16} color={C.lime}/><Text style={s.tileLabel}>SESSÕES</Text><Text style={s.tileValue}>{filtered.length}</Text></View><View style={s.reportTile}><Timer size={16} color={C.cyan}/><Text style={s.tileLabel}>TEMPO DE HUNT</Text><Text style={s.tileValue}>{Math.floor(reportTotals.minutes/60)}h {reportTotals.minutes%60}m</Text></View></View>
+    <View style={s.reportGrid}><View style={s.reportTile}><Zap size={16} color={C.cyan}/><Text style={s.tileLabel}>XP TOTAL</Text><Text style={s.tileValue}>{xpShort(reportTotals.xp)}</Text></View><View style={s.reportTile}><Coins size={16} color={C.orange}/><Text style={s.tileLabel}>LOOT BRUTO</Text><Text style={s.tileValue}>{money(reportTotals.loot)}</Text></View><View style={s.reportTile}><Swords size={16} color={C.lime}/><Text style={s.tileLabel}>SESSÕES</Text><Text style={s.tileValue}>{filtered.length}</Text></View><View style={s.reportTile}><Timer size={16} color={C.cyan}/><Text style={s.tileLabel}>TEMPO DE HUNT</Text><Text style={s.tileValue}>{Math.floor(reportTotals.minutes/60)}h {reportTotals.minutes%60}m</Text></View></View>
+    <View style={s.tcRateCard}>
+      <View style={s.tcRateHeading}><Coins size={16} color={C.lime}/><Text style={s.tcRateTitle}>CONVERSOR DE TIBIA COINS</Text></View>
+      <Text style={s.tcRateHint}>Defina qualquer lote de TC e quanto ele custa em GP. As taxas ficam salvas neste aparelho.</Text>
+      <View style={s.tcRateRow}>
+        <View style={s.tcRateField}><Text style={s.tcRateLabel}>VALOR DE 250 TC (R$)</Text><TextInput value={tcRealPer250} onChangeText={setTcRealPer250} placeholder="Ex.: 75,00" placeholderTextColor="#64747D" keyboardType="decimal-pad" style={s.tcRateInput}/></View>
+        <View style={s.tcRateField}><Text style={s.tcRateLabel}>TAMANHO DO LOTE (TC)</Text><TextInput value={tcAmount} onChangeText={setTcAmount} placeholder="Ex.: 1, 12,5 ou 250" placeholderTextColor="#64747D" keyboardType="decimal-pad" style={s.tcRateInput}/></View>
+      </View>
+      <View style={s.tcRateField}><Text style={s.tcRateLabel}>PREÇO DESSE LOTE EM GP</Text><TextInput value={tcGpAmount} onChangeText={setTcGpAmount} placeholder="Ex.: 12.500.000" placeholderTextColor="#64747D" keyboardType="decimal-pad" style={s.tcRateInput}/></View>
+      {tcRateGpPerTc>0?<Text style={s.tcRatePerCoin}>Taxa calculada: {formatCompactNumber(Math.round(tcRateGpPerTc))} gp por TC</Text>:<Text style={s.tcRateMissing}>Preencha o lote e o preço em GP para calcular.</Text>}
+      <View style={s.tcRateResult}><Text style={s.tcRateResultLabel}>LUCRO DA HUNT EM VALOR ESTIMADO</Text><Text style={s.tcRateResultValue}>{huntRealEstimate===null?'Configure as taxas acima':formatCompactReais(huntRealEstimate)}</Text><Text style={s.tcRateResultMeta}>{huntRealEstimate===null?`${money(reportTotals.profit)} · lucro líquido no período selecionado`:`${formatCompactNumber(huntTcEquivalent)} TC equivalentes · ${money(reportTotals.profit)} líquidos no período`}</Text></View>
+      <Text style={s.tcRateFootnote}>Estimativa baseada nas taxas que você informou e no lucro líquido do filtro atual.</Text>
+    </View>
     <View style={s.sectionHead}><Text style={s.sectionTitle}>XP NOS ÚLTIMOS 7 DIAS</Text><Text style={s.chartLegend}><View style={s.legendDot}/> XP</Text></View>
     <View style={s.chartCard}><View style={s.chartBars}>{daily.map((d,i)=><View style={s.barColumn} key={d.date}><Text style={s.barValue}>{d.xp?xpShort(d.xp):''}</Text><View style={s.barTrack}><LinearGradient colors={i===6?['#D5FF8D',C.lime]:['#4AA2AC','#377B87']} style={[s.bar,{height:`${Math.max(5, Math.round((d.xp/maxDaily)*100))}%` as any}]}/></View><Text style={s.barDate}>{toDate(d.date).toLocaleDateString('pt-BR',{weekday:'short'}).replace('.','')}</Text></View>)}</View></View>
     <View style={s.sectionHead}><Text style={s.sectionTitle}>HISTÓRICO DE HUNTS</Text><Text style={s.sectionNote}>{filtered.length} sessões</Text></View>
@@ -383,14 +434,14 @@ export function AppScreen({tab}: {tab: Tab}) {
         <LinearGradient colors={['#1C3430','#14252C','#101A26']} style={StyleSheet.absoluteFill}/>
         <View style={s.cardOrnament}/><View style={s.shareCardHeader}><View style={s.brandMark}><Swords size={17} color={C.bg}/></View><View><Text style={s.brandName}>HUNTLOG <Text style={{color:C.lime}}>TIBIA</Text></Text><Text style={s.brandSub}>DIÁRIO DE AVENTURAS</Text></View><View style={s.cardDate}><CalendarDays size={12} color={C.muted}/><Text style={s.cardDateText}>{dateLabel(selectedHunt.date)}</Text></View></View>
         <View style={s.cardRule}/><View style={s.cardLocLine}><MapPin size={14} color={C.lime}/><Text style={s.cardLocation}>{selectedHunt.location}</Text></View><Text style={s.cardChar}>{selectedHunt.character} <Text style={s.cardCharMuted}>· {selectedHunt.vocation} · LVL {selectedHunt.level||'—'}</Text></Text>
-        <View style={s.cardStats}><View style={s.cardStat}><Text style={s.cardStatLabel}>EXPERIÊNCIA</Text><Text style={[s.cardStatValue,{color:C.cyan}]}>{n(selectedHunt.xp)}</Text><Text style={s.cardStatUnit}>XP</Text></View><View style={s.cardStatDivider}/><View style={s.cardStat}><Text style={s.cardStatLabel}>LUCRO LÍQUIDO</Text><Text style={[s.cardStatValue,{color:selectedHunt.loot-selectedHunt.supplies>=0?C.green:C.red}]}>{money(selectedHunt.loot-selectedHunt.supplies)}</Text><Text style={s.cardStatUnit}>GP</Text></View></View>
+        <View style={s.cardStats}><View style={s.cardStat}><Text style={s.cardStatLabel}>EXPERIÊNCIA</Text><Text style={[s.cardStatValue,{color:C.cyan}]}>{xpShort(selectedHunt.xp)}</Text><Text style={s.cardStatUnit}>XP</Text></View><View style={s.cardStatDivider}/><View style={s.cardStat}><Text style={s.cardStatLabel}>LUCRO LÍQUIDO</Text><Text style={[s.cardStatValue,{color:selectedHunt.loot-selectedHunt.supplies>=0?C.green:C.red}]}>{money(selectedHunt.loot-selectedHunt.supplies)}</Text><Text style={s.cardStatUnit}>GP</Text></View></View>
         <View style={s.cardBreakdown}><View><Text style={s.cardBreakLabel}>LOOT</Text><Text style={s.cardBreakValue}>{money(selectedHunt.loot)}</Text></View><Text style={s.cardMinus}>−</Text><View><Text style={s.cardBreakLabel}>SUPPLIES</Text><Text style={s.cardBreakValue}>{money(selectedHunt.supplies)}</Text></View><View style={s.cardDuration}><Timer size={13} color={C.orange}/><Text style={s.cardDurationText}>{selectedHunt.duration} MIN</Text></View></View>
         {selectedHunt.session&&<>
           <View style={[s.cardRule,s.sessionRule]}/>
           <View style={s.sessionTime}><CalendarDays size={13} color={C.cyan}/><Text style={s.sessionTimeText}>INÍCIO {selectedHunt.session.startedAt}  ·  FIM {selectedHunt.session.endedAt}</Text></View>
           <View style={s.sessionMetricGrid}>{[
             ['XP BRUTO',selectedHunt.session.rawXpGain],['XP/H',selectedHunt.session.xpPerHour],['XP BRUTO/H',selectedHunt.session.rawXpPerHour],['BALANCE',selectedHunt.session.balance],['DANO',selectedHunt.session.damage],['DANO/H',selectedHunt.session.damagePerHour],['CURA',selectedHunt.session.healing],['CURA/H',selectedHunt.session.healingPerHour],
-          ].map(([label,value])=><View key={String(label)} style={s.sessionMetric}><Text style={s.sessionLabel}>{label}</Text><Text style={s.sessionValue}>{n(Number(value))}</Text></View>)}</View>
+          ].map(([label,value])=><View key={String(label)} style={s.sessionMetric}><Text style={s.sessionLabel}>{label}</Text><Text style={s.sessionValue}>{formatCompactNumber(Number(value))}</Text></View>)}</View>
           <View style={s.sessionLists}>
             <View style={s.sessionListPanel}><Text style={s.sessionSectionTitle}>MONSTROS ABATIDOS · {n(selectedHunt.session.monsters.reduce((sum,item)=>sum+item.count,0))}</Text>{selectedHunt.session.monsters.map((item,index)=><View key={`${item.name}-${index}`} style={s.sessionEntityRow}><Text style={s.sessionCount}>{n(item.count)}×</Text><Text style={s.sessionEntityName}>{item.name}</Text></View>)}</View>
             <View style={s.sessionListPanel}><Text style={s.sessionSectionTitle}>ITENS LOOTEADOS · {selectedHunt.session.items.length} TIPOS</Text><View style={s.sessionItemsGrid}>{selectedHunt.session.items.map((item,index)=><View key={`${item.name}-${index}`} style={s.sessionItemRow}><Text style={s.sessionCount}>{n(item.count)}×</Text><Text style={s.sessionEntityName}>{item.name}</Text></View>)}</View></View>
@@ -405,7 +456,7 @@ export function AppScreen({tab}: {tab: Tab}) {
   const Profile = () => <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
     <Header eyebrow="SUA CONTA DE AVENTUREIRO" title="Perfil" right={<View style={s.roundIcon}><UserRound size={19} color={C.lime}/></View>} />
     <View style={s.profileHero}><View style={s.profileHeroIcon}><Crown size={22} color={C.orange}/></View><View style={{flex:1}}><Text style={s.profileLabel}>PERSONAGEM PRINCIPAL</Text><Text style={s.profileName}>{primaryCharacter?.name ?? 'Cadastre seu personagem'}</Text><Text style={s.profileMeta}>{primaryCharacter ? `${primaryCharacter.vocation} · LEVEL ${primaryCharacter.level}` : 'Salve nome, vocação e level para agilizar suas hunts.'}</Text></View></View>
-    {primaryCharacter&&<View style={s.profileXp}><Zap size={16} color={C.cyan}/><Text style={s.profileXpText}>{n(primaryCharacter.registeredXp)} XP registrada em hunts</Text></View>}
+    {primaryCharacter&&<View style={s.profileXp}><Zap size={16} color={C.cyan}/><Text style={s.profileXpText}>{xpShort(primaryCharacter.registeredXp)} XP registrada em hunts</Text></View>}
     <Text style={s.formSection}>CADASTRAR / ATUALIZAR PERSONAGEM</Text>
     <Text style={s.fieldLabel}>NOME DO PERSONAGEM</Text><TextInput value={profileName} onChangeText={setProfileName} placeholder="Ex.: Nero" placeholderTextColor="#566772" style={s.profileInput} autoCapitalize="words"/>
     <Text style={[s.fieldLabel,{marginTop:5}]}>VOCAÇÃO</Text><View style={s.vocRow}>{['EK','RP','MS','ED','Other'].map(v=><Pressable key={v} onPress={()=>setProfileVocation(v)} style={[s.vocPill,profileVocation===v&&s.vocPillActive]}><Text style={[s.vocText,profileVocation===v&&s.vocTextActive]}>{v}</Text></Pressable>)}</View>
@@ -421,13 +472,13 @@ export function AppScreen({tab}: {tab: Tab}) {
       <View style={s.detailsHeader}><View style={{flex:1}}><Text style={s.modalEyebrow}>FICHA DA HUNT · {dateLabel(detailHunt.date)}</Text><Text style={s.detailsTitle} numberOfLines={1}>{detailHunt.location}</Text><Text style={s.detailsSubtitle}>{detailHunt.character} · {detailHunt.vocation} · LVL {detailHunt.level||'—'}</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Fechar detalhes" style={s.closeButton} onPress={()=>setDetailHuntId(null)}><X size={19} color={C.muted}/></Pressable></View>
       <ScrollView style={s.detailsScroll} showsVerticalScrollIndicator={false}>
         <View style={s.detailsStats}>{[
-          ['XP',n(detailHunt.xp),C.cyan],['LUCRO',money(detailHunt.loot-detailHunt.supplies),detailHunt.loot>=detailHunt.supplies?C.green:C.red],['LOOT',money(detailHunt.loot),C.orange],['SUPPLIES',money(detailHunt.supplies),C.red],['DURAÇÃO',`${detailHunt.duration} min`,C.cyan],['XP/H',performanceNumber(performanceValue(detailHunt,'xpHour'),'xpHour'),C.cyan],['LUCRO/H',performanceNumber(performanceValue(detailHunt,'profitHour'),'profitHour'),detailHunt.loot>=detailHunt.supplies?C.green:C.red],
+          ['XP',xpShort(detailHunt.xp),C.cyan],['LUCRO',money(detailHunt.loot-detailHunt.supplies),detailHunt.loot>=detailHunt.supplies?C.green:C.red],['LOOT',money(detailHunt.loot),C.orange],['SUPPLIES',money(detailHunt.supplies),C.red],['DURAÇÃO',`${detailHunt.duration} min`,C.cyan],['XP/H',performanceNumber(performanceValue(detailHunt,'xpHour'),'xpHour'),C.cyan],['LUCRO/H',performanceNumber(performanceValue(detailHunt,'profitHour'),'profitHour'),detailHunt.loot>=detailHunt.supplies?C.green:C.red],
         ].map(([label,value,color])=><View key={String(label)} style={s.detailsStat}><Text style={s.detailsStatLabel}>{label}</Text><Text style={[s.detailsStatValue,{color:String(color)}]}>{String(value)}</Text></View>)}</View>
         {detailHunt.session ? <>
           <View style={s.detailsSessionHeader}><Text style={s.sectionTitle}>DADOS IMPORTADOS DO TIBIA</Text><Text style={s.detailsTimes}>Início {detailHunt.session.startedAt}  ·  Fim {detailHunt.session.endedAt}</Text></View>
           <View style={s.detailsStats}>{[
             ['XP BRUTO',detailHunt.session.rawXpGain],['XP/H',detailHunt.session.xpPerHour],['XP BRUTO/H',detailHunt.session.rawXpPerHour],['BALANCE',detailHunt.session.balance],['DANO',detailHunt.session.damage],['DANO/H',detailHunt.session.damagePerHour],['CURA',detailHunt.session.healing],['CURA/H',detailHunt.session.healingPerHour],
-          ].map(([label,value])=><View key={String(label)} style={s.detailsStat}><Text style={s.detailsStatLabel}>{String(label)}</Text><Text style={s.detailsStatValue}>{n(Number(value))}</Text></View>)}</View>
+          ].map(([label,value])=><View key={String(label)} style={s.detailsStat}><Text style={s.detailsStatLabel}>{String(label)}</Text><Text style={s.detailsStatValue}>{formatCompactNumber(Number(value))}</Text></View>)}</View>
           <View style={s.detailsListPanel}><Text style={s.sessionSectionTitle}>MONSTROS ABATIDOS · {n(detailHunt.session.monsters.reduce((sum,item)=>sum+item.count,0))}</Text>{detailHunt.session.monsters.map((item,index)=><View key={`${item.name}-${index}`} style={s.detailsEntityRow}><Text style={s.detailsCount}>{n(item.count)}×</Text><Text style={s.detailsEntityName}>{item.name}</Text></View>)}</View>
           <View style={s.detailsListPanel}><Text style={s.sessionSectionTitle}>ITENS LOOTEADOS · {detailHunt.session.items.length} TIPOS · {n(detailHunt.session.items.reduce((sum,item)=>sum+item.count,0))} UNIDADES</Text>{detailHunt.session.items.map((item,index)=><View key={`${item.name}-${index}`} style={s.detailsEntityRow}><Text style={s.detailsCount}>{n(item.count)}×</Text><Text style={s.detailsEntityName}>{item.name}</Text></View>)}</View>
         </> : <View style={s.smallEmpty}><Text style={s.smallEmptyText}>Esta hunt foi registrada manualmente e não tem o detalhamento da sessão do Tibia.</Text></View>}
@@ -451,7 +502,7 @@ export function AppScreen({tab}: {tab: Tab}) {
     <Modal visible={formOpen} animationType="slide" transparent onRequestClose={()=>setFormOpen(false)}><View style={[s.modalShade,desktop&&s.modalShadeDesktop]}><KeyboardAvoidingView behavior={Platform.OS==='ios'?'padding':'height'} style={[s.modalWrap,desktop&&s.modalWrapDesktop]}><View style={[s.modal,desktop&&s.modalDesktop]}>
       <View style={s.modalHeader}><View><Text style={s.modalEyebrow}>SEU DIÁRIO DE AVENTURAS</Text><Text style={s.modalTitle}>{editing?'Editar hunt':'Nova hunt'}</Text></View><Pressable style={s.closeButton} onPress={()=>setFormOpen(false)}><X size={19} color={C.muted}/></Pressable></View>
       <ScrollView style={s.formScroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{paddingBottom:18}}>
-        <View style={s.importPanel}><Text style={s.formSection}>IMPORTAR SESSÃO DO TIBIA</Text><Text style={s.importHelp}>Copie o texto “Session data” do cliente e cole aqui. XP, loot, supplies, duração, dano, cura, monstros e itens serão preenchidos.</Text><TextInput value={sessionText} onChangeText={setSessionText} placeholder={'Session data: From ...\nSession: 00:54h\nXP Gain: 761,309\n...'} placeholderTextColor="#64747D" multiline textAlignVertical="top" autoCapitalize="none" style={s.sessionInput}/>{sessionText.trim()?<Text style={[s.importInputHint,sessionText.match(/^\s*Session data:\s*From/im)?s.importInputHintReady:s.importInputHintMissing]}>{sessionText.trim().split(/\r?\n/).length} linhas coladas · {sessionText.match(/^\s*Session data:\s*From/im)?'cabeçalho Session data encontrado':'cabeçalho ausente; copie desde a primeira linha da sessão'}</Text>:null}<Pressable onPress={importSession} style={s.importButton}><ScrollText size={15} color={C.bg}/><Text style={s.importButtonText}>LER E PREENCHER HUNT</Text></Pressable>{importError? <Text style={s.formError}>{importError}</Text>:null}{importedSession&&<View style={s.importSummary}><Text style={s.importSummaryTitle}>SESSÃO IMPORTADA · {importedSession.startedAt}–{importedSession.endedAt}</Text><Text style={s.importSummaryText}>{importedSession.monsters.length} tipos de monstro · {importedSession.items.length} tipos de item · {n(importedSession.damage)} dano · {n(importedSession.healing)} cura</Text><Text numberOfLines={2} style={s.importSummaryText}>{importedSession.monsters.slice(0,3).map(e=>`${e.count}× ${e.name}`).join('  ·  ') || 'Sem lista de monstros'}</Text><Text numberOfLines={2} style={s.importSummaryText}>{importedSession.items.slice(0,3).map(e=>`${e.count}× ${e.name}`).join('  ·  ') || 'Sem lista de itens'}</Text></View>}</View>
+        <View style={s.importPanel}><Text style={s.formSection}>IMPORTAR SESSÃO DO TIBIA</Text><Text style={s.importHelp}>Cole o texto da sessão copiado do Tibia. Pode começar com “Session data” ou apenas com o horário inicial. XP, loot, supplies, dano, cura, monstros e itens serão preenchidos.</Text><TextInput value={sessionText} onChangeText={setSessionText} placeholder={'Session data: From ...\nSession: 00:54h\nXP Gain: 761,309\n...'} placeholderTextColor="#64747D" multiline textAlignVertical="top" autoCapitalize="none" style={s.sessionInput}/>{sessionText.trim()?<Text style={[s.importInputHint,hasSessionPeriod?s.importInputHintReady:s.importInputHintMissing]}>{sessionText.trim().split(/\r?\n/).length} linhas coladas · {hasSessionPeriod?'período da hunt encontrado':'horário ausente; confira se copiou a sessão inteira'}</Text>:null}<Pressable onPress={importSession} style={s.importButton}><ScrollText size={15} color={C.bg}/><Text style={s.importButtonText}>LER E PREENCHER HUNT</Text></Pressable>{importError? <Text style={s.formError}>{importError}</Text>:null}{importedSession&&<View style={s.importSummary}><Text style={s.importSummaryTitle}>SESSÃO IMPORTADA · {importedSession.startedAt}–{importedSession.endedAt}</Text><Text style={s.importSummaryText}>{importedSession.monsters.length} tipos de monstro · {importedSession.items.length} tipos de item · {n(importedSession.damage)} dano · {n(importedSession.healing)} cura</Text><Text numberOfLines={2} style={s.importSummaryText}>{importedSession.monsters.slice(0,3).map(e=>`${e.count}× ${e.name}`).join('  ·  ') || 'Sem lista de monstros'}</Text><Text numberOfLines={2} style={s.importSummaryText}>{importedSession.items.slice(0,3).map(e=>`${e.count}× ${e.name}`).join('  ·  ') || 'Sem lista de itens'}</Text></View>}</View>
         <Text style={s.formSection}>PERSONAGEM</Text>
         {characters.length>0&&<>
           <Text style={s.fieldHint}>TOQUE EM UM PERSONAGEM SALVO PARA PREENCHER</Text>
@@ -499,6 +550,21 @@ function Field({label,value,onChange,placeholder,keyboard,width}: {label:string;
 
 const s = StyleSheet.create({
   mobileShell:{flex:1,minWidth:0,width:'100%'},
+  tcRateCard:{padding:14,marginBottom:19,borderRadius:15,borderWidth:1,borderColor:'#394A36',backgroundColor:'#111E1A'},
+  tcRateHeading:{flexDirection:'row',alignItems:'center',gap:8,marginBottom:5},
+  tcRateTitle:{color:C.lime,fontSize:10,fontWeight:'900',letterSpacing:.7},
+  tcRateHint:{color:'#9CAC9F',fontSize:9,lineHeight:14,marginBottom:11},
+  tcRateRow:{flexDirection:'row',gap:8},
+  tcRateField:{flex:1,minWidth:0,marginBottom:8},
+  tcRateLabel:{color:'#AAB8AD',fontSize:7,fontWeight:'900',letterSpacing:.55,marginBottom:5},
+  tcRateInput:{height:40,paddingHorizontal:10,borderRadius:9,borderWidth:1,borderColor:'#34453D',backgroundColor:'#0A1410',color:C.text,fontSize:11,fontWeight:'700'},
+  tcRatePerCoin:{color:C.green,fontSize:9,fontWeight:'800',marginTop:-1,marginBottom:10},
+  tcRateMissing:{color:C.orange,fontSize:9,fontWeight:'700',marginTop:-1,marginBottom:10},
+  tcRateResult:{padding:12,borderRadius:11,borderWidth:1,borderColor:'#355448',backgroundColor:'#142820'},
+  tcRateResultLabel:{color:'#A1B9A8',fontSize:7,fontWeight:'900',letterSpacing:.6},
+  tcRateResultValue:{color:C.green,fontSize:21,fontWeight:'900',marginTop:4},
+  tcRateResultMeta:{color:'#B1C1B5',fontSize:8,lineHeight:13,marginTop:4},
+  tcRateFootnote:{color:C.muted,fontSize:8,lineHeight:12,marginTop:8},
   reportExportButton:{minHeight:46,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:9,paddingHorizontal:12,marginTop:-5,marginBottom:14,borderRadius:12,borderWidth:1,borderColor:'#536B3E',backgroundColor:'#1B2A22'},
   reportExportButtonDisabled:{opacity:.48},
   reportExportText:{color:C.lime,fontSize:10,fontWeight:'900',letterSpacing:.45},
