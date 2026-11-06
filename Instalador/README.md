@@ -2,7 +2,9 @@
 
 ## Android
 
-[**Clique aqui para baixar o APK atualizado**](https://github.com/jpcostadev/huntLog/raw/refs/heads/main/Instalador/HuntLog-Android-latest.apk)
+[**Baixar HuntLog Tibia 1.1.8 para Android (APK)**](https://github.com/jpcostadev/huntLog/raw/refs/heads/main/Instalador/HuntLog-Android-1.1.8.apk)
+
+O alias [`HuntLog-Android-latest.apk`](HuntLog-Android-latest.apk) também é atualizado junto com o APK versionado.
 
 O APK inclui as mesmas abas, relatórios, exportação Excel e calculadora de TC do desktop. Informe a cotação total de 25 TC em GP, configure as faixas de venda com quantidade mínima, tamanho do pacote e valor em reais, e simule a quantidade desejada. As taxas ficam salvas no aparelho.
 
