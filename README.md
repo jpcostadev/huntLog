@@ -23,6 +23,8 @@ Para instalar no Android, baixe o [APK mais recente](https://github.com/jpcostad
 - As cotações de GP e os preços de venda ficam salvos no aparelho; o lucro líquido das hunts também ganha estimativa em reais nos Relatórios e no Excel.
 - Valores grandes na interface aparecem abreviados em `k`, `M`, `B`, `T`, `Q`, `E` e unidades maiores; os campos e a exportação Excel mantêm os números completos.
 - Busca, filtros por período/data e ordenação por lucro, XP e XP por hora.
+- Relatórios com estimativa em reais por hunt e soma no período escolhido (7 dias, 30 dias ou tudo); a tela inicial também mostra o valor estimado acumulado em reais.
+- Nomes de hunts registrados ficam salvos e aparecem como sugestões no próximo cadastro.
 - Comparação de desempenho com destaques da melhor e da pior sessão e média do filtro atual.
 - Card PNG de compartilhamento com os detalhes importados e crédito a Fallz Developer.
 - Interface adaptada para celular e desktop.
@@ -83,7 +85,7 @@ npm run desktop:release
 O instalador aparece em:
 
 ```text
-out/desktop/HuntLog-Tibia-Setup-1.1.1-x64.exe
+out/desktop/HuntLog-Tibia-Setup-1.1.2-x64.exe
 ```
 
 O instalador atual não é assinado com certificado de código; o Windows pode mostrar o aviso de publicador desconhecido.

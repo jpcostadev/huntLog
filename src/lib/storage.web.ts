@@ -2,6 +2,7 @@ import { DEFAULT_TIBIA_COIN_RATES, type CharacterInput, type CharacterProfile, t
 
 const STORAGE_KEY = 'huntlog.local.v1';
 const TC_RATES_KEY = 'huntlog.tibia-coin-rates.v1';
+const HUNT_LOCATIONS_KEY = 'huntlog.saved-hunt-locations.v1';
 type StoredData = { hunts: Hunt[]; characters: CharacterProfile[] };
 
 function read(): StoredData {
@@ -18,6 +19,22 @@ function read(): StoredData {
 
 function write(data: StoredData) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+export async function loadSavedHuntLocations(): Promise<string[]> {
+  if (typeof localStorage === 'undefined') return [];
+  try {
+    const saved = JSON.parse(localStorage.getItem(HUNT_LOCATIONS_KEY) ?? '[]') as unknown;
+    return Array.isArray(saved) ? saved.filter((name): name is string => typeof name === 'string') : [];
+  } catch { return []; }
+}
+
+export async function saveHuntLocation(name: string) {
+  const normalized = name.trim();
+  if (!normalized || typeof localStorage === 'undefined') return;
+  const current = await loadSavedHuntLocations();
+  const names = [normalized, ...current.filter(item => item.toLocaleLowerCase() !== normalized.toLocaleLowerCase())].slice(0, 100);
+  localStorage.setItem(HUNT_LOCATIONS_KEY, JSON.stringify(names));
 }
 
 export async function loadTibiaCoinRates(): Promise<TibiaCoinRates> {

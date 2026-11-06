@@ -12,7 +12,7 @@ import { router } from 'expo-router';
 import { captureRef } from 'react-native-view-shot';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { deleteHunt as deleteStoredHunt, loadHuntData, loadTibiaCoinRates, saveCharacter as persistCharacter, saveHunt as persistHunt, saveTibiaCoinRates } from './src/lib/storage';
+import { deleteHunt as deleteStoredHunt, loadHuntData, loadSavedHuntLocations, loadTibiaCoinRates, saveCharacter as persistCharacter, saveHunt as persistHunt, saveHuntLocation, saveTibiaCoinRates } from './src/lib/storage';
 import type { CharacterInput, CharacterProfile, Hunt, TibiaCoinPriceTier, TibiaCoinRates, TibiaSession } from './src/lib/models';
 import { parseTibiaSession } from './src/lib/tibiaSessionParser';
 import {
@@ -62,6 +62,7 @@ const performanceNumber = (value: number, metric: PerformanceMetric) => metric =
 export function AppScreen({tab}: {tab: Tab}) {
   const [hunts, setHunts] = useState<Hunt[]>([]);
   const [characters, setCharacters] = useState<CharacterProfile[]>([]);
+  const [savedHuntLocations, setSavedHuntLocations] = useState<string[]>([]);
   const [formOpen, setFormOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
@@ -98,6 +99,7 @@ export function AppScreen({tab}: {tab: Tab}) {
   const hasSessionPeriod = /^\s*Session data:\s*From/im.test(sessionText) || /^\s*\d{2}:\d{2}:\d{2}\s+to\s+\d{4}-\d{2}-\d{2},\s*\d{2}:\d{2}:\d{2}/im.test(sessionText);
   const cardRef = useRef<React.ElementRef<typeof View>>(null);
   const [form, setForm] = useState({ date: today(), character: '', vocation: 'EK', level: '', location: '', duration: '60', xp: '', loot: '', supplies: '', primary: false });
+  const [huntLocationFocused, setHuntLocationFocused] = useState(false);
 
   const refresh = async () => {
     const data = await loadHuntData();
@@ -109,6 +111,7 @@ export function AppScreen({tab}: {tab: Tab}) {
       .then(data => { setHunts(data.hunts); setCharacters(data.characters); })
       .catch(() => setToast('Não foi possível carregar os dados salvos.'));
   }, []);
+  useEffect(() => { loadSavedHuntLocations().then(setSavedHuntLocations).catch(() => undefined); }, []);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(''), 2600); return () => clearTimeout(t); }, [toast]);
   useEffect(() => {
     let active = true;
@@ -163,6 +166,9 @@ export function AppScreen({tab}: {tab: Tab}) {
   const allTotals = totals(hunts), reportTotals = totals(filtered);
   const currentTcRates: TibiaCoinRates = { realPer250:0, realLotAmount:250, realBuyAmount:0, realSellAmount:0, tcAmount:25, gpAmount:asDecimal(tcGpAmount), sellTiers };
   const tcRateGpPerTc = currentTcRates.tcAmount > 0 ? currentTcRates.gpAmount / currentTcRates.tcAmount : 0;
+  const lifetimeHuntEstimates = hunts.map(hunt => estimateHuntValueInReal(hunt.loot-hunt.supplies,currentTcRates));
+  const lifetimeRealEstimate = lifetimeHuntEstimates.some(estimate=>estimate.realValue!==null)
+    ? lifetimeHuntEstimates.reduce((sum,estimate)=>sum+(estimate.realValue??0),0) : null;
   const huntEstimates = filtered.map(hunt => ({hunt, estimate:estimateHuntValueInReal(hunt.loot-hunt.supplies,currentTcRates)}));
   const huntTcEquivalent = huntEstimates.reduce((sum,row)=>sum+(row.estimate.gpPerTc>0?row.estimate.tcEquivalent:0),0);
   const configuredHuntEstimates = huntEstimates.filter(row=>row.estimate.realValue!==null);
@@ -192,6 +198,8 @@ export function AppScreen({tab}: {tab: Tab}) {
         location, duration: asInteger(form.duration), xp: asInteger(form.xp),
         loot: asInteger(form.loot), supplies: asInteger(form.supplies), session: importedSession,
       }, editing?.id ?? null, form.primary);
+      await saveHuntLocation(location);
+      setSavedHuntLocations(await loadSavedHuntLocations());
       await refresh();
       setFormOpen(false);
       setEditing(null);
@@ -356,11 +364,13 @@ export function AppScreen({tab}: {tab: Tab}) {
     <LinearGradient colors={['#192D31','#112329','#121D26']} start={{x:0,y:0}} end={{x:1,y:1}} style={s.hero}>
       <View style={s.heroTop}><View style={s.live}><View style={s.liveDot}/><Text style={s.liveText}>SEU PROGRESSO</Text></View><Sparkles size={17} color={C.lime}/></View>
       <Text style={s.heroLabel}>LUCRO ACUMULADO</Text><Text style={s.heroAmount}>{money(allTotals.profit)}</Text>
+      <View style={s.heroRealRow}><View><Text style={s.heroRealLabel}>VALOR ESTIMADO EM REAIS</Text><Text style={s.heroRealAmount}>{lifetimeRealEstimate===null?'Configure cotação e faixas':formatCompactReais(lifetimeRealEstimate)}</Text></View><View style={s.heroRealIcon}><Coins size={17} color={C.green}/></View></View>
       <View style={s.heroDivider}/><View style={s.heroFoot}><View style={s.heroMetric}><Zap size={14} color={C.cyan}/><Text style={s.heroMetricText}>{xpShort(allTotals.xp)} XP total</Text></View><View style={s.heroMetric}><Activity size={14} color={C.orange}/><Text style={s.heroMetricText}>{(allTotals.minutes/60).toFixed(1).replace('.',',')}h caçadas</Text></View><Text style={s.heroHint}>DESDE O INÍCIO</Text></View>
       <View style={s.heroGlow}/>
     </LinearGradient>
     <View style={s.sectionHead}><Text style={s.sectionTitle}>VISÃO GERAL</Text><Text style={s.sectionNote}>Todas as hunts</Text></View>
     <View style={s.statsGrid}><Stat label="EXPERIÊNCIA" value={xpShort(allTotals.xp)} icon={<Zap size={17} color={C.cyan}/>} color={C.cyan} sub="XP acumulada"/><Stat label="LOOT" value={xpShort(allTotals.loot)} icon={<Coins size={17} color={C.orange}/>} color={C.orange} sub="bruto coletado"/><Stat label="SUPPLIES" value={xpShort(allTotals.supplies)} icon={<ArrowDownLeft size={17} color={C.red}/>} color={C.red} sub="gasto total"/><Stat label="LUCRO LÍQUIDO" value={xpShort(allTotals.profit)} icon={<TrendingUp size={17} color={C.green}/>} color={C.green} sub="loot − supplies"/></View>
+    {lifetimeRealEstimate!==null&&<Text style={s.homeRealHint}>Estimativa baseada nas faixas de TC cadastradas · {hunts.length} hunts</Text>}
     <View style={s.sectionHead}><Text style={s.sectionTitle}>MINHAS HUNTS</Text><Text style={s.sectionNote}>{huntList.length} encontradas</Text></View>
     {HuntFilters({query:huntQuery,onQuery:setHuntQuery,selectedPeriod:huntPeriod,onPeriod:setHuntPeriod,exactDate:huntDate,onDate:setHuntDate})}
     {huntList.length ? <View style={s.card}>{huntList.map((h,i)=><View key={h.id}>{i>0&&<View style={s.separator}/>}<HuntRow h={h}/></View>)}</View> : <View style={s.smallEmpty}><Text style={s.smallEmptyText}>{hunts.length?'Nenhuma hunt corresponde à busca.':'Seu grimório está em branco.'}</Text>{!hunts.length&&<Pressable onPress={openNew}><Text style={s.link}>REGISTRAR PRIMEIRA HUNT</Text></Pressable>}</View>}
@@ -551,7 +561,7 @@ export function AppScreen({tab}: {tab: Tab}) {
           <View style={{flex:1}}><Text style={s.primaryToggleTitle}>SALVAR COMO PERSONAGEM PRINCIPAL</Text><Text style={s.primaryToggleHint}>Nome e level serão sugeridos nas próximas hunts</Text></View>
           <View style={[s.checkbox,form.primary&&s.checkboxActive]}>{form.primary&&<Check size={12} color={C.bg}/>}</View>
         </Pressable>
-        <Text style={s.formSection}>DADOS DA HUNT</Text><Field label="LOCAL / RESPAWN" value={form.location} onChange={v=>setForm({...form,location:v})} placeholder="Ex.: Winter Court"/>
+        <Text style={s.formSection}>DADOS DA HUNT</Text><View style={s.fieldWrap}><Text style={s.fieldLabel}>NOME DA HUNT / LOCAL</Text><TextInput value={form.location} onChangeText={v=>setForm(current=>({...current,location:v}))} onFocus={()=>setHuntLocationFocused(true)} onBlur={()=>setTimeout(()=>setHuntLocationFocused(false),150)} placeholder="Ex.: Winter Court" placeholderTextColor="#566772" autoCapitalize="words" style={s.input}/>{huntLocationFocused&&savedHuntLocations.filter(name=>!form.location||name.toLocaleLowerCase().includes(form.location.toLocaleLowerCase())).slice(0,6).length>0&&<View style={s.huntSuggestionList}>{savedHuntLocations.filter(name=>!form.location||name.toLocaleLowerCase().includes(form.location.toLocaleLowerCase())).slice(0,6).map(name=><Pressable key={name} onPressIn={()=>{setForm(current=>({...current,location:name}));setHuntLocationFocused(false);}} style={s.huntSuggestion}><MapPin size={13} color={C.lime}/><Text style={s.huntSuggestionText}>{name}</Text><Text style={s.huntSuggestionHint}>USAR</Text></Pressable>)}</View>}<Text style={s.savedHuntHint}>Ao salvar esta hunt, o nome fica guardado para você reutilizar nas próximas.</Text></View>
         <View style={s.formRow}><Field label="DATA (AAAA-MM-DD)" value={form.date} onChange={v=>setForm({...form,date:v})} placeholder={today()} width="58%"/><Field label="DURAÇÃO (MIN)" value={form.duration} onChange={v=>setForm({...form,duration:v})} placeholder="60" keyboard="numeric" width="38%"/></View>
         <View style={s.formRow}><Field label="XP GANHA" value={form.xp} onChange={v=>setForm({...form,xp:v})} placeholder="1.500.000" keyboard="numeric"/><Field label="LOOT (GP)" value={form.loot} onChange={v=>setForm({...form,loot:v})} placeholder="850.000" keyboard="numeric"/></View>
         <Field label="SUPPLIES (GP)" value={form.supplies} onChange={v=>setForm({...form,supplies:v})} placeholder="420.000" keyboard="numeric"/>
@@ -640,6 +650,12 @@ const s = StyleSheet.create({
   reportHuntName:{flex:1,color:C.text,fontSize:10,fontWeight:'800'},
   reportHuntAmount:{color:C.green,fontSize:12,fontWeight:'900'},
   reportHuntMeta:{color:C.muted,fontSize:8,lineHeight:13,marginTop:4},
+  savedHuntHint:{color:C.muted,fontSize:8,lineHeight:13,marginTop:6},
+  huntSuggestionList:{marginTop:5,borderWidth:1,borderColor:C.line,borderRadius:10,backgroundColor:'#0D151E',overflow:'hidden'},
+  huntSuggestion:{minHeight:40,paddingHorizontal:11,flexDirection:'row',alignItems:'center',gap:8,borderBottomWidth:1,borderColor:C.line},
+  huntSuggestionText:{flex:1,color:C.text,fontSize:11,fontWeight:'700'},
+  huntSuggestionHint:{color:C.lime,fontSize:8,fontWeight:'900',letterSpacing:.5},
+  homeRealHint:{color:C.muted,fontSize:9,lineHeight:14,marginTop:-13,marginBottom:20},
   calculatorReportsLink:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingTop:12},
   tcRateFootnote:{color:C.muted,fontSize:8,lineHeight:12,marginTop:8},
   reportExportButton:{minHeight:46,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:9,paddingHorizontal:12,marginTop:-5,marginBottom:14,borderRadius:12,borderWidth:1,borderColor:'#536B3E',backgroundColor:'#1B2A22'},
@@ -656,7 +672,7 @@ const s = StyleSheet.create({
   safe:{flex:1,backgroundColor:C.bg},appMain:{flex:1,minWidth:0},desktopShell:{flex:1,flexDirection:'row'},sideBar:{width:246,backgroundColor:'#0B121A',borderRightWidth:1,borderColor:'#1B2832',padding:20},sideBrand:{flexDirection:'row',alignItems:'center',marginBottom:2},sideCaption:{fontSize:9,fontWeight:'900',letterSpacing:1.4,color:C.muted,marginBottom:12,marginLeft:8,marginTop:26},sideItem:{height:45,flexDirection:'row',alignItems:'center',gap:12,paddingHorizontal:12,borderRadius:11,marginBottom:5},sideItemActive:{backgroundColor:'#1A2826'},sideItemText:{fontSize:12,fontWeight:'700',color:C.muted},sideItemTextActive:{color:C.lime},sideBottom:{marginTop:'auto',borderTopWidth:1,borderColor:C.line,paddingTop:17},sideCharacter:{fontSize:12,fontWeight:'800',color:C.text},sideCharacterMeta:{fontSize:10,color:C.muted,marginTop:4},sideAdd:{minHeight:56,marginTop:14,marginBottom:0,paddingHorizontal:9,borderRadius:13,backgroundColor:'#151F25',borderWidth:1,borderColor:'#34472F',flexDirection:'row',alignItems:'center',gap:9},sideAddIcon:{width:32,height:32,borderRadius:10,backgroundColor:C.lime,alignItems:'center',justifyContent:'center'},sideAddText:{fontSize:10,fontWeight:'900',color:C.text},sideAddSub:{fontSize:8,fontWeight:'600',color:'#8FA19A',marginTop:3},topBar:{height:58,paddingHorizontal:21,flexDirection:'row',alignItems:'center',borderBottomWidth:1,borderBottomColor:'#18232D'}, brandIcon:{width:36,height:36,borderRadius:11,backgroundColor:'#0B1717',borderWidth:1,borderColor:'#26372F',overflow:'hidden',alignItems:'center',justifyContent:'center'},brandLogo:{width:36,height:36,borderRadius:10}, topBrand:{marginLeft:10},topBrandName:{fontSize:16,fontWeight:'900',letterSpacing:1.4,color:C.text},topBrandCaption:{fontSize:8,fontWeight:'700',color:C.muted,letterSpacing:1.35,marginTop:2},topAdd:{marginLeft:'auto',width:34,height:34,borderRadius:11,backgroundColor:C.lime,alignItems:'center',justifyContent:'center'},
   content:{paddingHorizontal:20,paddingTop:20,paddingBottom:22,width:'100%',maxWidth:1180,alignSelf:'center'},header:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginBottom:20},eyebrow:{fontSize:9,fontWeight:'800',letterSpacing:1.7,color:C.muted,marginBottom:6},title:{fontSize:25,fontWeight:'800',letterSpacing:-.65,color:C.text},levelBadge:{borderWidth:1,borderColor:'#3D392B',backgroundColor:'#282519',borderRadius:20,paddingVertical:7,paddingHorizontal:10,flexDirection:'row',alignItems:'center',gap:5},levelBadgeText:{fontSize:9,fontWeight:'900',letterSpacing:.6,color:C.orange},
   profileCard:{minHeight:68,flexDirection:'row',alignItems:'center',gap:11,padding:11,marginTop:-6,marginBottom:14,borderRadius:15,backgroundColor:'#111B25',borderWidth:1,borderColor:C.line},profileIcon:{width:36,height:36,borderRadius:11,backgroundColor:'#FFB96718',alignItems:'center',justifyContent:'center'},profileLabel:{fontSize:8,fontWeight:'900',letterSpacing:1,color:C.muted,marginBottom:3},profileName:{fontSize:13,fontWeight:'800',color:C.text},profileMeta:{fontSize:9,fontWeight:'600',color:'#95A5AE',marginTop:3},
-  hero:{borderRadius:20,padding:19,overflow:'hidden',borderWidth:1,borderColor:'#2A4441',marginBottom:23},heroGlow:{position:'absolute',width:140,height:140,borderRadius:100,backgroundColor:'#78BD6740',right:-55,top:10},heroTop:{flexDirection:'row',justifyContent:'space-between',alignItems:'center'},live:{flexDirection:'row',alignItems:'center',gap:7},liveDot:{width:7,height:7,borderRadius:5,backgroundColor:C.lime},liveText:{fontSize:9,fontWeight:'900',letterSpacing:1.5,color:'#B5C5C4'},heroLabel:{fontSize:10,fontWeight:'800',letterSpacing:1.5,color:'#AFC2BE',marginTop:24},heroAmount:{fontSize:34,fontWeight:'900',letterSpacing:-1.2,color:C.lime,marginTop:3},heroDivider:{height:1,backgroundColor:'#FFFFFF16',marginTop:17,marginBottom:12},heroFoot:{flexDirection:'row',alignItems:'center',gap:14},heroMetric:{flexDirection:'row',alignItems:'center',gap:5},heroMetricText:{fontSize:11,color:'#D3DDDC',fontWeight:'600'},heroHint:{marginLeft:'auto',fontSize:8,color:'#829593',fontWeight:'800',letterSpacing:.8},
+  hero:{borderRadius:20,padding:19,overflow:'hidden',borderWidth:1,borderColor:'#2A4441',marginBottom:23},heroGlow:{position:'absolute',width:140,height:140,borderRadius:100,backgroundColor:'#78BD6740',right:-55,top:10},heroTop:{flexDirection:'row',justifyContent:'space-between',alignItems:'center'},live:{flexDirection:'row',alignItems:'center',gap:7},liveDot:{width:7,height:7,borderRadius:5,backgroundColor:C.lime},liveText:{fontSize:9,fontWeight:'900',letterSpacing:1.5,color:'#B5C5C4'},heroLabel:{fontSize:10,fontWeight:'800',letterSpacing:1.5,color:'#AFC2BE',marginTop:24},heroAmount:{fontSize:34,fontWeight:'900',letterSpacing:-1.2,color:C.lime,marginTop:3},heroRealRow:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:10,marginTop:15,padding:12,borderRadius:13,borderWidth:1,borderColor:'#74D39745',backgroundColor:'#071A183D'},heroRealLabel:{fontSize:8,fontWeight:'900',letterSpacing:.8,color:'#AFC2BE'},heroRealAmount:{fontSize:20,fontWeight:'900',color:C.green,marginTop:4},heroRealIcon:{width:34,height:34,borderRadius:11,alignItems:'center',justifyContent:'center',backgroundColor:'#8CE1A51A'},heroDivider:{height:1,backgroundColor:'#FFFFFF16',marginTop:17,marginBottom:12},heroFoot:{flexDirection:'row',alignItems:'center',gap:14},heroMetric:{flexDirection:'row',alignItems:'center',gap:5},heroMetricText:{fontSize:11,color:'#D3DDDC',fontWeight:'600'},heroHint:{marginLeft:'auto',fontSize:8,color:'#829593',fontWeight:'800',letterSpacing:.8},
   sectionHead:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginBottom:11,marginTop:3},sectionTitle:{fontSize:10,fontWeight:'900',letterSpacing:1.25,color:'#C4CFD2'},sectionNote:{fontSize:10,color:C.muted,fontWeight:'600'},link:{fontSize:9,fontWeight:'900',letterSpacing:.6,color:C.lime,flexDirection:'row',alignItems:'center'},statsGrid:{flexDirection:'row',flexWrap:'wrap',gap:9,marginBottom:23},stat:{width:'48.5%',minHeight:104,borderRadius:15,backgroundColor:C.panel,borderWidth:1,borderColor:C.line,padding:12},statIcon:{width:28,height:28,borderRadius:9,alignItems:'center',justifyContent:'center'},statLabel:{position:'absolute',top:19,left:49,fontSize:8,fontWeight:'800',letterSpacing:.75,color:C.muted},statValue:{fontSize:19,fontWeight:'800',color:C.text,marginTop:8,letterSpacing:-.3},statSub:{fontSize:9,color:C.muted,marginTop:2},
   card:{borderRadius:15,borderWidth:1,borderColor:C.line,backgroundColor:C.panel,overflow:'hidden'},huntRow:{minHeight:69,paddingHorizontal:12,paddingVertical:10,flexDirection:'row',alignItems:'center'},rowMark:{width:35,height:35,borderRadius:11,backgroundColor:'#C5F36B12',alignItems:'center',justifyContent:'center',marginRight:10},rowTitle:{color:C.text,fontWeight:'700',fontSize:12,marginBottom:4},rowMeta:{color:C.muted,fontSize:9,fontWeight:'600'},rowGain:{fontSize:11,fontWeight:'800',marginBottom:4},separator:{height:1,marginLeft:57,backgroundColor:C.line},
   empty:{borderRadius:17,borderWidth:1,borderColor:C.line,backgroundColor:C.panel,paddingHorizontal:24,paddingVertical:27,alignItems:'center'},emptyIcon:{width:48,height:48,borderRadius:16,backgroundColor:'#1A2833',alignItems:'center',justifyContent:'center',marginBottom:13},emptyTitle:{fontWeight:'800',fontSize:14,color:C.text},emptyText:{textAlign:'center',fontSize:11,lineHeight:18,color:C.muted,marginTop:6,maxWidth:240},emptyButton:{height:36,borderRadius:10,backgroundColor:C.lime,paddingHorizontal:13,flexDirection:'row',alignItems:'center',gap:6,marginTop:16},emptyButtonText:{fontSize:9,fontWeight:'900',letterSpacing:.5,color:C.bg},bigAdd:{borderRadius:13,overflow:'hidden',marginTop:15},bigAddGradient:{height:49,paddingHorizontal:14,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:9},bigAddText:{flex:1,textAlign:'center',fontSize:10,fontWeight:'900',letterSpacing:.75,color:C.bg},tip:{textAlign:'center',fontSize:8,color:'#5E707B',fontWeight:'700',letterSpacing:.7,marginTop:11},

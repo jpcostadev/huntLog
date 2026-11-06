@@ -54,6 +54,25 @@ async function database() {
   return db;
 }
 
+export async function loadSavedHuntLocations(): Promise<string[]> {
+  const db = await database();
+  const row = await db.getFirstAsync<{value:string}>('SELECT value FROM app_settings WHERE key = ?', 'saved_hunt_locations');
+  if (!row) return [];
+  try {
+    const names = JSON.parse(row.value) as unknown;
+    return Array.isArray(names) ? names.filter((name): name is string => typeof name === 'string') : [];
+  } catch { return []; }
+}
+
+export async function saveHuntLocation(name: string) {
+  const normalized = name.trim();
+  if (!normalized) return;
+  const db = await database();
+  const current = await loadSavedHuntLocations();
+  const names = [normalized, ...current.filter(item => item.toLocaleLowerCase() !== normalized.toLocaleLowerCase())].slice(0, 100);
+  await db.runAsync('INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'saved_hunt_locations', JSON.stringify(names));
+}
+
 export async function loadTibiaCoinRates(): Promise<TibiaCoinRates> {
   const db = await database();
   const row = await db.getFirstAsync<{ value: string }>('SELECT value FROM app_settings WHERE key = ?', 'tibia_coin_rates');

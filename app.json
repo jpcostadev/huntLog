@@ -11,7 +11,7 @@
     },
     "android": {
       "package": "com.huntlog.tibia",
-      "versionCode": 14,
+      "versionCode": 15,
       "softwareKeyboardLayoutMode": "resize",
       "backgroundColor": "#080D14",
       "adaptiveIcon": {
