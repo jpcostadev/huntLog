@@ -37,6 +37,21 @@ export async function saveHuntLocation(name: string) {
   localStorage.setItem(HUNT_LOCATIONS_KEY, JSON.stringify(names));
 }
 
+export async function renameHuntLocation(previous: string, next: string) {
+  const normalized = next.trim();
+  if (!normalized) throw new Error('Digite um nome para salvar.');
+  const current = await loadSavedHuntLocations();
+  if (!current.some(name => name.toLocaleLowerCase() === previous.toLocaleLowerCase())) throw new Error('Esse nome salvo não foi encontrado.');
+  const names = [normalized, ...current.filter(name => name.toLocaleLowerCase() !== previous.toLocaleLowerCase() && name.toLocaleLowerCase() !== normalized.toLocaleLowerCase())];
+  localStorage.setItem(HUNT_LOCATIONS_KEY, JSON.stringify(names));
+}
+
+export async function deleteHuntLocation(name: string) {
+  const current = await loadSavedHuntLocations();
+  const names = current.filter(item => item.toLocaleLowerCase() !== name.toLocaleLowerCase());
+  localStorage.setItem(HUNT_LOCATIONS_KEY, JSON.stringify(names));
+}
+
 export async function loadTibiaCoinRates(): Promise<TibiaCoinRates> {
   if (typeof localStorage === 'undefined') return { ...DEFAULT_TIBIA_COIN_RATES };
   try {

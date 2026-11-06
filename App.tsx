@@ -12,7 +12,7 @@ import { router } from 'expo-router';
 import { captureRef } from 'react-native-view-shot';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { clearHunts as clearStoredHunts, deleteHunt as deleteStoredHunt, deleteHunts as deleteStoredHunts, loadHuntData, loadSavedHuntLocations, loadTibiaCoinRates, saveCharacter as persistCharacter, saveHunt as persistHunt, saveHuntLocation, saveTibiaCoinRates } from './src/lib/storage';
+import { clearHunts as clearStoredHunts, deleteHunt as deleteStoredHunt, deleteHunts as deleteStoredHunts, deleteHuntLocation, loadHuntData, loadSavedHuntLocations, loadTibiaCoinRates, renameHuntLocation, saveCharacter as persistCharacter, saveHunt as persistHunt, saveHuntLocation, saveTibiaCoinRates } from './src/lib/storage';
 import type { CharacterInput, CharacterProfile, Hunt, TibiaCoinPriceTier, TibiaCoinRates, TibiaSession } from './src/lib/models';
 import { parseTibiaSession } from './src/lib/tibiaSessionParser';
 import {
@@ -63,6 +63,10 @@ export function AppScreen({tab}: {tab: Tab}) {
   const [hunts, setHunts] = useState<Hunt[]>([]);
   const [characters, setCharacters] = useState<CharacterProfile[]>([]);
   const [savedHuntLocations, setSavedHuntLocations] = useState<string[]>([]);
+  const [savedHuntLocationsOpen, setSavedHuntLocationsOpen] = useState(false);
+  const [savedHuntLocationQuery, setSavedHuntLocationQuery] = useState('');
+  const [renamingSavedLocation, setRenamingSavedLocation] = useState<string | null>(null);
+  const [savedLocationDraft, setSavedLocationDraft] = useState('');
   const [refreshingHunts, setRefreshingHunts] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedHuntIds, setSelectedHuntIds] = useState<Set<number>>(new Set());
@@ -102,7 +106,6 @@ export function AppScreen({tab}: {tab: Tab}) {
   const hasSessionPeriod = /^\s*Session data:\s*From/im.test(sessionText) || /^\s*\d{2}:\d{2}:\d{2}\s+to\s+\d{4}-\d{2}-\d{2},\s*\d{2}:\d{2}:\d{2}/im.test(sessionText);
   const cardRef = useRef<React.ElementRef<typeof View>>(null);
   const [form, setForm] = useState({ date: today(), character: '', vocation: 'EK', level: '', location: '', duration: '60', xp: '', loot: '', supplies: '', primary: false });
-  const [huntLocationFocused, setHuntLocationFocused] = useState(false);
 
   const refresh = async () => {
     const data = await loadHuntData();
@@ -218,8 +221,6 @@ export function AppScreen({tab}: {tab: Tab}) {
         location, duration: asInteger(form.duration), xp: asInteger(form.xp),
         loot: asInteger(form.loot), supplies: asInteger(form.supplies), session: importedSession,
       }, editing?.id ?? null, form.primary);
-      await saveHuntLocation(location);
-      setSavedHuntLocations(await loadSavedHuntLocations());
       await refresh();
       setFormOpen(false);
       setEditing(null);
@@ -231,6 +232,46 @@ export function AppScreen({tab}: {tab: Tab}) {
     } finally {
       setSaving(false);
     }
+  };
+  const saveCurrentHuntLocation = async () => {
+    const name = form.location.trim();
+    if (!name) { setToast('Digite o nome da hunt antes de salvar nos nomes reutilizáveis'); return; }
+    try {
+      await saveHuntLocation(name);
+      setSavedHuntLocations(await loadSavedHuntLocations());
+      setToast('Nome salvo para reutilizar');
+    } catch (error) {
+      setToast(`Não foi possível salvar o nome: ${error instanceof Error ? error.message : 'erro local.'}`);
+    }
+  };
+  const pickSavedHuntLocation = (name: string) => {
+    setForm(current => ({...current,location:name}));
+    setSavedHuntLocationsOpen(false);
+    setSavedHuntLocationQuery('');
+  };
+  const beginRenameSavedLocation = (name: string) => { setRenamingSavedLocation(name); setSavedLocationDraft(name); };
+  const commitRenameSavedLocation = async () => {
+    if (!renamingSavedLocation) return;
+    try {
+      await renameHuntLocation(renamingSavedLocation, savedLocationDraft);
+      setSavedHuntLocations(await loadSavedHuntLocations());
+      if (form.location.toLocaleLowerCase() === renamingSavedLocation.toLocaleLowerCase()) setForm(current => ({...current,location:savedLocationDraft.trim()}));
+      setRenamingSavedLocation(null);
+      setToast('Nome da hunt atualizado');
+    } catch (error) { setToast(error instanceof Error ? error.message : 'Não foi possível editar esse nome.'); }
+  };
+  const removeSavedHuntLocation = (name: string) => {
+    const run = async () => {
+      try {
+        await deleteHuntLocation(name);
+        setSavedHuntLocations(await loadSavedHuntLocations());
+        if (renamingSavedLocation === name) setRenamingSavedLocation(null);
+        setToast('Nome removido da lista de reutilização');
+      } catch (error) { setToast(error instanceof Error ? error.message : 'Não foi possível apagar esse nome.'); }
+    };
+    const message = `Remover “${name}” dos nomes salvos? Hunts já registradas não serão alteradas.`;
+    if (Platform.OS === 'web') { if (globalThis.confirm(message)) void run(); return; }
+    Alert.alert('Apagar nome salvo?', message, [{text:'Cancelar',style:'cancel'},{text:'Apagar',style:'destructive',onPress:()=>void run()}]);
   };
   const openNew = () => {
     setEditing(null);
@@ -648,7 +689,7 @@ export function AppScreen({tab}: {tab: Tab}) {
           <View style={{flex:1}}><Text style={s.primaryToggleTitle}>SALVAR COMO PERSONAGEM PRINCIPAL</Text><Text style={s.primaryToggleHint}>Nome e level serão sugeridos nas próximas hunts</Text></View>
           <View style={[s.checkbox,form.primary&&s.checkboxActive]}>{form.primary&&<Check size={12} color={C.bg}/>}</View>
         </Pressable>
-        <Text style={s.formSection}>DADOS DA HUNT</Text><View style={s.fieldWrap}><Text style={s.fieldLabel}>NOME DA HUNT / LOCAL</Text><TextInput value={form.location} onChangeText={v=>setForm(current=>({...current,location:v}))} onFocus={()=>setHuntLocationFocused(true)} onBlur={()=>setTimeout(()=>setHuntLocationFocused(false),150)} placeholder="Ex.: Winter Court" placeholderTextColor="#566772" autoCapitalize="words" style={s.input}/>{huntLocationFocused&&savedHuntLocations.filter(name=>!form.location||name.toLocaleLowerCase().includes(form.location.toLocaleLowerCase())).slice(0,6).length>0&&<View style={s.huntSuggestionList}>{savedHuntLocations.filter(name=>!form.location||name.toLocaleLowerCase().includes(form.location.toLocaleLowerCase())).slice(0,6).map(name=><Pressable key={name} onPressIn={()=>{setForm(current=>({...current,location:name}));setHuntLocationFocused(false);}} style={s.huntSuggestion}><MapPin size={13} color={C.lime}/><Text style={s.huntSuggestionText}>{name}</Text><Text style={s.huntSuggestionHint}>USAR</Text></Pressable>)}</View>}<Text style={s.savedHuntHint}>Ao salvar esta hunt, o nome fica guardado para você reutilizar nas próximas.</Text></View>
+        <Text style={s.formSection}>DADOS DA HUNT</Text><View style={s.fieldWrap}><Text style={s.fieldLabel}>NOME DA HUNT / LOCAL</Text><TextInput value={form.location} onChangeText={v=>setForm(current=>({...current,location:v}))} placeholder="Ex.: Winter Court" placeholderTextColor="#566772" autoCapitalize="words" style={[s.input,s.huntLocationInput]}/><View style={s.savedLocationActions}><Pressable accessibilityRole="button" onPress={()=>void saveCurrentHuntLocation()} style={s.savedLocationAction}><Check size={13} color={C.lime}/><Text style={s.savedLocationActionText}>SALVAR NOME</Text></Pressable><Pressable accessibilityRole="button" onPress={()=>{setSavedHuntLocationQuery('');setRenamingSavedLocation(null);setSavedHuntLocationsOpen(true);}} style={s.savedLocationAction}><List size={14} color={C.lime}/><Text style={s.savedLocationActionText}>USAR NOME SALVO ({savedHuntLocations.length})</Text></Pressable></View><Text style={s.savedHuntHint}>Salvar na lista é opcional. Os nomes salvos podem ser filtrados, editados ou removidos.</Text></View>
         <View style={s.formRow}><Field label="DATA (AAAA-MM-DD)" value={form.date} onChange={v=>setForm({...form,date:v})} placeholder={today()} width="58%"/><Field label="DURAÇÃO (MIN)" value={form.duration} onChange={v=>setForm({...form,duration:v})} placeholder="60" keyboard="numeric" width="38%"/></View>
         <View style={s.formRow}><Field label="XP GANHA" value={form.xp} onChange={v=>setForm({...form,xp:v})} placeholder="1.500.000" keyboard="numeric"/><Field label="LOOT (GP)" value={form.loot} onChange={v=>setForm({...form,loot:v})} placeholder="850.000" keyboard="numeric"/></View>
         <Field label="SUPPLIES (GP)" value={form.supplies} onChange={v=>setForm({...form,supplies:v})} placeholder="420.000" keyboard="numeric"/>
@@ -656,6 +697,20 @@ export function AppScreen({tab}: {tab: Tab}) {
         <Pressable disabled={saving} onPress={save} style={[s.saveButton,saving&&{opacity:.65}]}><LinearGradient colors={[C.lime,'#A6E454']} style={s.saveGradient}>{saving?<Activity size={17} color={C.bg}/>:<Check size={17} color={C.bg}/>}<Text style={s.saveText}>{saving?'SALVANDO…':editing?'SALVAR ALTERAÇÕES':'SALVAR HUNT'}</Text></LinearGradient></Pressable>
       </ScrollView>
     </View></KeyboardAvoidingView></View></Modal>
+    <Modal visible={savedHuntLocationsOpen} transparent animationType="slide" onRequestClose={()=>setSavedHuntLocationsOpen(false)}>
+      <View style={[s.modalShade,desktop&&s.modalShadeDesktop]}><View style={[s.modal,desktop&&s.savedLocationsModal]}>
+        <View style={s.modalHeader}><View><Text style={s.modalEyebrow}>NOMES REUTILIZÁVEIS</Text><Text style={s.modalTitle}>Hunts salvas</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Fechar nomes salvos" style={s.closeButton} onPress={()=>setSavedHuntLocationsOpen(false)}><X size={19} color={C.muted}/></Pressable></View>
+        <Text style={s.savedLocationsIntro}>Mais recentes primeiro. Toque no nome para preencher a hunt. Você também pode editar ou apagar nomes.</Text>
+        <View style={s.savedLocationSearch}><Search size={16} color={C.muted}/><TextInput value={savedHuntLocationQuery} onChangeText={setSavedHuntLocationQuery} placeholder="Filtrar nomes de hunt" placeholderTextColor="#64747D" style={s.searchInput} autoCapitalize="none" returnKeyType="search"/></View>
+        <ScrollView style={s.savedLocationsList} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          {savedHuntLocations.filter(name=>name.toLocaleLowerCase().includes(savedHuntLocationQuery.trim().toLocaleLowerCase())).map(name=><View key={name} style={s.savedNameRow}>
+            {renamingSavedLocation===name?<TextInput value={savedLocationDraft} onChangeText={setSavedLocationDraft} style={[s.profileInput,s.savedNameEditInput]} autoFocus selectTextOnFocus autoCapitalize="words" onSubmitEditing={()=>void commitRenameSavedLocation()} returnKeyType="done"/>:<Pressable style={s.savedNamePick} onPress={()=>pickSavedHuntLocation(name)}><Text style={s.savedNameText}>{name}</Text><Text style={s.savedNameHint}>USAR NESTA HUNT</Text></Pressable>}
+            {renamingSavedLocation===name?<><Pressable accessibilityRole="button" accessibilityLabel={`Salvar edição de ${name}`} style={s.savedNameIcon} onPress={()=>void commitRenameSavedLocation()}><Check size={16} color={C.green}/></Pressable><Pressable accessibilityRole="button" accessibilityLabel="Cancelar edição" style={s.savedNameIcon} onPress={()=>setRenamingSavedLocation(null)}><X size={16} color={C.muted}/></Pressable></>:<><Pressable accessibilityRole="button" accessibilityLabel={`Editar nome ${name}`} style={s.savedNameIcon} onPress={()=>beginRenameSavedLocation(name)}><Pencil size={15} color={C.lime}/></Pressable><Pressable accessibilityRole="button" accessibilityLabel={`Apagar nome ${name}`} style={s.savedNameIcon} onPress={()=>removeSavedHuntLocation(name)}><Trash2 size={15} color={C.red}/></Pressable></>}
+          </View>)}
+          {!savedHuntLocations.filter(name=>name.toLocaleLowerCase().includes(savedHuntLocationQuery.trim().toLocaleLowerCase())).length&&<View style={s.smallEmpty}><Text style={s.smallEmptyText}>{savedHuntLocations.length?'Nenhum nome corresponde à busca.':'Você ainda não salvou nomes de hunt.'}</Text></View>}
+        </ScrollView>
+      </View></View>
+    </Modal>
     <Modal visible={Boolean(formError)} transparent animationType="fade" onRequestClose={()=>setFormError('')}>
       <View style={s.feedbackShade}>
         <View style={[s.feedbackCard,desktop&&s.feedbackCardDesktop]}>
@@ -742,10 +797,6 @@ const s = StyleSheet.create({
   reportHuntAmount:{color:C.green,fontSize:12,fontWeight:'900'},
   reportHuntMeta:{color:C.muted,fontSize:8,lineHeight:13,marginTop:4},
   savedHuntHint:{color:C.muted,fontSize:8,lineHeight:13,marginTop:6},
-  huntSuggestionList:{marginTop:5,borderWidth:1,borderColor:C.line,borderRadius:10,backgroundColor:'#0D151E',overflow:'hidden'},
-  huntSuggestion:{minHeight:40,paddingHorizontal:11,flexDirection:'row',alignItems:'center',gap:8,borderBottomWidth:1,borderColor:C.line},
-  huntSuggestionText:{flex:1,color:C.text,fontSize:11,fontWeight:'700'},
-  huntSuggestionHint:{color:C.lime,fontSize:8,fontWeight:'900',letterSpacing:.5},
   homeRealHint:{color:C.muted,fontSize:9,lineHeight:14,marginTop:-13,marginBottom:20},
   rowNumbers:{alignItems:'flex-end',maxWidth:175},
   rowReal:{color:C.green,fontSize:8,fontWeight:'800',marginTop:3},
@@ -762,6 +813,7 @@ const s = StyleSheet.create({
   importInputHint:{fontSize:8,lineHeight:12,marginTop:5,marginBottom:2},
   importInputHintReady:{color:C.green},
   importInputHintMissing:{color:C.orange},
+  huntLocationInput:{width:'100%',height:46,minHeight:46,alignSelf:'stretch',flexShrink:0,paddingHorizontal:11,fontSize:12},savedLocationActions:{flexDirection:'row',flexWrap:'wrap',gap:8,marginTop:9},savedLocationAction:{minHeight:36,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:7,paddingHorizontal:12,borderRadius:10,backgroundColor:C.panel,borderWidth:1,borderColor:C.line},savedLocationActionText:{fontSize:8,fontWeight:'900',letterSpacing:.45,color:C.lime},savedLocationsModal:{width:'100%',maxWidth:570,maxHeight:'78%',alignSelf:'center',borderRadius:22},savedLocationsIntro:{fontSize:10,lineHeight:15,color:C.muted,marginTop:-7,marginBottom:13},savedLocationSearch:{height:42,flexDirection:'row',alignItems:'center',gap:9,paddingHorizontal:11,marginBottom:10,borderRadius:11,backgroundColor:C.panel,borderWidth:1,borderColor:C.line},savedLocationsList:{flexShrink:1,minHeight:90},savedNameRow:{minHeight:60,flexDirection:'row',alignItems:'center',gap:5,paddingHorizontal:8,borderBottomWidth:1,borderColor:C.line},savedNamePick:{flex:1,minWidth:0,paddingVertical:9},savedNameText:{fontSize:12,fontWeight:'800',color:C.text},savedNameHint:{fontSize:7,fontWeight:'900',letterSpacing:.55,color:C.lime,marginTop:4},savedNameIcon:{width:34,height:36,alignItems:'center',justifyContent:'center',borderRadius:9,backgroundColor:C.panel},savedNameEditInput:{flex:1,minWidth:0,height:40,marginBottom:0,paddingHorizontal:9},
   inlineActions:{flexDirection:'row',alignItems:'center',gap:9},refreshButton:{width:30,height:30,borderRadius:10,backgroundColor:C.panel,borderWidth:1,borderColor:C.line,alignItems:'center',justifyContent:'center'},selectionToolbar:{flexDirection:'row',alignItems:'center',flexWrap:'wrap',gap:7,marginBottom:12},selectionAction:{minHeight:34,paddingHorizontal:12,borderRadius:10,backgroundColor:C.panel,borderWidth:1,borderColor:C.line,alignItems:'center',justifyContent:'center'},selectionActionActive:{borderColor:'#506E45',backgroundColor:'#24372C'},selectionActionText:{fontSize:9,fontWeight:'800',color:C.muted},selectionActionTextActive:{color:C.lime},selectionDelete:{borderColor:'#53323A',backgroundColor:'#2A1C24'},selectionDeleteText:{color:C.red},selectionDisabled:{opacity:.45},selectHuntButton:{width:28,height:28,marginRight:8,borderRadius:9,borderWidth:1,borderColor:C.muted,alignItems:'center',justifyContent:'center'},selectHuntButtonActive:{backgroundColor:C.lime,borderColor:C.lime},clearHistoryButton:{minHeight:42,marginTop:12,marginBottom:7,borderRadius:11,backgroundColor:'#21171D',borderWidth:1,borderColor:'#472B33',flexDirection:'row',alignItems:'center',justifyContent:'center',gap:8},clearHistoryText:{fontSize:9,fontWeight:'900',letterSpacing:.4,color:C.red},
   huntLibraryIntro:{padding:14,marginBottom:13,borderRadius:14,borderWidth:1,borderColor:C.line,backgroundColor:C.panel},huntLibraryTitle:{color:C.text,fontSize:13,fontWeight:'900'},huntLibrarySubtitle:{color:C.muted,fontSize:10,lineHeight:15,marginTop:4},sortHeader:{gap:8,marginBottom:10},sortChoices:{flexDirection:'row',flexWrap:'wrap',gap:6},sortChip:{minHeight:31,paddingHorizontal:11,borderRadius:9,alignItems:'center',justifyContent:'center',backgroundColor:C.panel,borderWidth:1,borderColor:C.line},sortChipActive:{backgroundColor:'#263527',borderColor:'#718E4B'},sortChipText:{color:C.muted,fontSize:8,fontWeight:'900',letterSpacing:.45},sortChipTextActive:{color:C.lime},performanceIntro:{color:C.muted,fontSize:11,lineHeight:17,marginTop:-8,marginBottom:15},metricPicker:{flexDirection:'row',flexWrap:'wrap',gap:7,marginTop:3,marginBottom:13},metricChip:{flexGrow:1},performanceSummary:{padding:15,marginBottom:12,borderRadius:15,borderWidth:1,borderColor:'#37534A',backgroundColor:'#13241F'},averageLine:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},averageLabel:{fontSize:8,fontWeight:'900',letterSpacing:.8,color:'#A2B5AA'},averageValue:{fontSize:17,fontWeight:'900',color:C.green},averageHint:{fontSize:9,color:'#91A39B',marginTop:6},performanceHighlights:{flexDirection:'row',gap:9,marginBottom:18},performanceHighlight:{flex:1,minWidth:0,padding:12,borderRadius:14,borderWidth:1},bestHighlight:{backgroundColor:'#1A2A20',borderColor:'#506B3C'},worstHighlight:{backgroundColor:'#2A211C',borderColor:'#644936'},highlightHeader:{flexDirection:'row',alignItems:'center',gap:6,marginBottom:10},highlightEyebrow:{fontSize:8,fontWeight:'900',letterSpacing:.6,color:C.text},highlightLocation:{fontSize:12,fontWeight:'900',color:C.text},highlightMeta:{fontSize:8,color:C.muted,marginTop:4},highlightValue:{fontSize:15,fontWeight:'900',color:C.lime,marginTop:12},highlightCompare:{fontSize:8,color:'#A8B7AE',marginTop:4},performanceListHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginBottom:9},rankRow:{flexDirection:'row',gap:10,padding:12,marginBottom:8,borderRadius:13,borderWidth:1,borderColor:C.line,backgroundColor:C.panel},rankNumber:{width:26,height:26,borderRadius:9,alignItems:'center',justifyContent:'center',backgroundColor:'#1A2731'},rankNumberBest:{backgroundColor:'#3A4B25'},rankNumberText:{color:C.muted,fontSize:11,fontWeight:'900'},rankNumberTextBest:{color:C.lime},rankBody:{flex:1,minWidth:0},rankTitleLine:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:8},rankTitle:{flex:1,color:C.text,fontSize:11,fontWeight:'800'},rankValue:{color:C.green,fontSize:10,fontWeight:'900'},rankMeta:{color:C.muted,fontSize:8,marginTop:4},rankTrack:{height:5,overflow:'hidden',borderRadius:4,backgroundColor:'#26333A',marginTop:9},rankFill:{height:'100%',borderRadius:4,backgroundColor:C.green},rankFillLow:{backgroundColor:C.orange},rankCompare:{fontSize:8,fontWeight:'800',marginTop:5},rankCompareGood:{color:C.green},rankCompareLow:{color:C.orange},
   detailsShade:{flex:1,justifyContent:'flex-end',backgroundColor:'#000B'},detailsShadeDesktop:{justifyContent:'center',padding:22},detailsModal:{width:'100%',maxHeight:'92%',padding:18,paddingBottom:12,borderTopLeftRadius:23,borderTopRightRadius:23,borderWidth:1,borderColor:'#30414A',backgroundColor:'#0D151E'},detailsModalDesktop:{maxWidth:700,alignSelf:'center',borderRadius:21},detailsHeader:{flexDirection:'row',alignItems:'center',gap:12,marginBottom:13},detailsTitle:{fontSize:21,fontWeight:'900',color:C.text},detailsSubtitle:{fontSize:10,fontWeight:'700',color:C.lime,marginTop:4},detailsScroll:{flexShrink:1},detailsStats:{flexDirection:'row',flexWrap:'wrap',gap:8,marginBottom:13},detailsStat:{width:'31.5%',minHeight:54,padding:9,borderRadius:10,borderWidth:1,borderColor:C.line,backgroundColor:C.panel},detailsStatLabel:{color:C.muted,fontSize:7,fontWeight:'900',letterSpacing:.7},detailsStatValue:{fontSize:11,fontWeight:'900',color:C.text,marginTop:5},detailsSessionHeader:{gap:5,marginTop:3,marginBottom:11},detailsTimes:{color:'#AABABD',fontSize:9,lineHeight:14},detailsListPanel:{padding:12,marginBottom:10,borderRadius:12,borderWidth:1,borderColor:'#2D4248',backgroundColor:'#101D24'},detailsEntityRow:{minHeight:27,flexDirection:'row',alignItems:'center',gap:10,borderBottomWidth:1,borderColor:'#FFFFFF0A'},detailsCount:{minWidth:55,color:C.cyan,fontSize:10,fontWeight:'900',fontVariant:['tabular-nums']},detailsEntityName:{flex:1,color:'#E0E7E8',fontSize:11,lineHeight:16},detailsEditButton:{height:46,marginTop:12,borderRadius:12,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:8,backgroundColor:C.lime},detailsEditText:{fontSize:10,fontWeight:'900',letterSpacing:.8,color:C.bg},

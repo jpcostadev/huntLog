@@ -73,6 +73,23 @@ export async function saveHuntLocation(name: string) {
   await db.runAsync('INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'saved_hunt_locations', JSON.stringify(names));
 }
 
+export async function renameHuntLocation(previous: string, next: string) {
+  const normalized = next.trim();
+  if (!normalized) throw new Error('Digite um nome para salvar.');
+  const current = await loadSavedHuntLocations();
+  if (!current.some(name => name.toLocaleLowerCase() === previous.toLocaleLowerCase())) throw new Error('Esse nome salvo não foi encontrado.');
+  const names = [normalized, ...current.filter(name => name.toLocaleLowerCase() !== previous.toLocaleLowerCase() && name.toLocaleLowerCase() !== normalized.toLocaleLowerCase())];
+  const db = await database();
+  await db.runAsync('INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'saved_hunt_locations', JSON.stringify(names));
+}
+
+export async function deleteHuntLocation(name: string) {
+  const current = await loadSavedHuntLocations();
+  const names = current.filter(item => item.toLocaleLowerCase() !== name.toLocaleLowerCase());
+  const db = await database();
+  await db.runAsync('INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', 'saved_hunt_locations', JSON.stringify(names));
+}
+
 export async function loadTibiaCoinRates(): Promise<TibiaCoinRates> {
   const db = await database();
   const row = await db.getFirstAsync<{ value: string }>('SELECT value FROM app_settings WHERE key = ?', 'tibia_coin_rates');
