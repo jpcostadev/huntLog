@@ -17,11 +17,12 @@ Para instalar no Android, baixe o [APK mais recente](https://github.com/jpcostad
 - Registro, edição, consulta e remoção de hunts.
 - Perfil de personagem principal com nome, vocação e level sugeridos nos novos registros.
 - Importação do texto `Session data` copiado do cliente do Tibia, incluindo horários, XP, loot, supplies, balance, dano, cura, monstros e itens.
-- Abas para Minhas Hunts, Desempenho, Relatórios, Compartilhar e Perfil.
+- Abas para Minhas Hunts, Desempenho, Relatórios, Calculadora, Compartilhar e Perfil.
 - Exportação do relatório filtrado em Excel (`.xlsx`), com abas de resumo, hunts, monstros e itens, no Android e no desktop.
-- Calculadora estima o lucro das hunts em Tibia Coins e reais usando taxas personalizadas salvas no aparelho.
-- No relatório, informe o preço em reais de 250 TC e qualquer lote (por exemplo, 1 TC ou 12,5 TC) com seu preço em GP; a estimativa usa o lucro líquido do período filtrado.
-- Valores grandes na interface aparecem abreviados em `k`, `M`, `B` ou `T`; os campos e a exportação Excel mantêm os números completos.
+- A aba Calculadora permite informar qualquer lote de TC (1, 50, 250 ou quantidades fracionadas), a cotação em GP no Tibia e quanto você paga e recebe em reais.
+- A calculadora mostra GP por TC, custo de compra, receita de venda e margem em reais; também converte o lucro das hunts para TC e reais pela sua cotação de venda.
+- As taxas de compra, venda e GP/TC ficam salvas no aparelho e aparecem na exportação Excel.
+- Valores grandes na interface aparecem abreviados em `k`, `M`, `B`, `T`, `Q`, `E` e unidades maiores; os campos e a exportação Excel mantêm os números completos.
 - Busca, filtros por período/data e ordenação por lucro, XP e XP por hora.
 - Comparação de desempenho com destaques da melhor e da pior sessão e média do filtro atual.
 - Card PNG de compartilhamento com os detalhes importados e crédito a Fallz Developer.
@@ -83,7 +84,7 @@ npm run desktop:release
 O instalador aparece em:
 
 ```text
-out/desktop/HuntLog-Tibia-Setup-1.0.5-x64.exe
+out/desktop/HuntLog-Tibia-Setup-1.0.6-x64.exe
 ```
 
 O instalador atual não é assinado com certificado de código; o Windows pode mostrar o aviso de publicador desconhecido.

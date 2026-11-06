@@ -24,8 +24,14 @@ export async function loadTibiaCoinRates(): Promise<TibiaCoinRates> {
   if (typeof localStorage === 'undefined') return { ...DEFAULT_TIBIA_COIN_RATES };
   try {
     const value = JSON.parse(localStorage.getItem(TC_RATES_KEY) ?? 'null') as Partial<TibiaCoinRates> | null;
+    const legacySell = Number.isFinite(value?.realPer250) ? Number(value?.realPer250) : 0;
+    const realLotAmount = Number.isFinite(value?.realLotAmount) && Number(value?.realLotAmount) > 0 ? Number(value?.realLotAmount) : (legacySell > 0 ? 250 : 1);
+    const realSellAmount = Number.isFinite(value?.realSellAmount) ? Number(value?.realSellAmount) : legacySell;
     return {
-      realPer250: Number.isFinite(value?.realPer250) ? Number(value?.realPer250) : 0,
+      realPer250: realLotAmount > 0 ? realSellAmount * 250 / realLotAmount : legacySell,
+      realLotAmount,
+      realBuyAmount: Number.isFinite(value?.realBuyAmount) ? Number(value?.realBuyAmount) : 0,
+      realSellAmount,
       tcAmount: Number.isFinite(value?.tcAmount) && Number(value?.tcAmount) > 0 ? Number(value?.tcAmount) : 1,
       gpAmount: Number.isFinite(value?.gpAmount) ? Number(value?.gpAmount) : 0,
     };

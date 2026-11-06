@@ -34,7 +34,7 @@ function worksheet(rows: CellValue[][]) {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${sheetRows}</sheetData></worksheet>`;
 }
 
-export function buildHuntWorkbook(hunts: Hunt[], rates: TibiaCoinRates = { realPer250: 0, tcAmount: 1, gpAmount: 0 }) {
+export function buildHuntWorkbook(hunts: Hunt[], rates: TibiaCoinRates = { realPer250: 0, realLotAmount: 1, realBuyAmount: 0, realSellAmount: 0, tcAmount: 1, gpAmount: 0 }) {
   const total = hunts.reduce((sum, hunt) => ({
     xp: sum.xp + hunt.xp,
     loot: sum.loot + hunt.loot,
@@ -54,7 +54,11 @@ export function buildHuntWorkbook(hunts: Hunt[], rates: TibiaCoinRates = { realP
       ['Lote usado para calcular (TC)', rates.tcAmount],
       ['Preço do lote (gp)', rates.gpAmount],
       ['Taxa calculada (gp/TC)', overallEstimate.gpPerTc],
-      ['Preço informado (R$ / 250 TC)', rates.realPer250],
+      ['Lote de compra/venda informado (TC)', rates.realLotAmount],
+      ['Preço de compra do lote (R$)', rates.realBuyAmount],
+      ['Preço de venda do lote (R$)', rates.realSellAmount],
+      ['Preço de venda normalizado (R$ / 250 TC)', rates.realPer250],
+      ['Margem em dinheiro por lote (R$)', rates.realSellAmount - rates.realBuyAmount],
       ['Lucro convertido (TC)', overallEstimate.realValue === null ? '' : overallEstimate.tcEquivalent],
       ['Estimativa do lucro (R$)', overallEstimate.realValue ?? 'Configure as taxas no aplicativo'],
       ['Gerado em', new Date().toLocaleString('pt-BR')],

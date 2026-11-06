@@ -6,7 +6,7 @@ import {
 import * as Sharing from 'expo-sharing';
 import { File, Paths } from 'expo-file-system';
 import { buildHuntWorkbook } from './src/lib/reportWorkbook';
-import { estimateHuntValueInReal } from './src/lib/tibiaCoinCalculator';
+import { estimateHuntValueInReal, estimateTibiaCoinTrade } from './src/lib/tibiaCoinCalculator';
 import { formatCompactNumber, formatCompactReais } from './src/lib/numberFormat';
 import { router } from 'expo-router';
 import { captureRef } from 'react-native-view-shot';
@@ -16,12 +16,12 @@ import { deleteHunt as deleteStoredHunt, loadHuntData, loadTibiaCoinRates, saveC
 import type { CharacterInput, CharacterProfile, Hunt, TibiaCoinRates, TibiaSession } from './src/lib/models';
 import { parseTibiaSession } from './src/lib/tibiaSessionParser';
 import {
-  Activity, AlertCircle, ArrowDownLeft, ArrowUpRight, CalendarDays, Check, ChevronRight, Coins, Crown,
+  Activity, AlertCircle, ArrowDownLeft, ArrowUpRight, CalendarDays, Calculator as CalculatorIcon, Check, ChevronRight, Coins, Crown,
   FileSpreadsheet, Flame, Image as ImageIcon, MapPin, Plus, Search, ScrollText, Share2, Shield, Sparkles,
   BarChart3, Eye, List, Pencil, Swords, Timer, Trash2, TrendingUp, Trophy, UserRound, X, Zap,
 } from 'lucide-react-native';
 
-type Tab = 'home' | 'hunts' | 'performance' | 'reports' | 'share' | 'profile';
+type Tab = 'home' | 'hunts' | 'performance' | 'reports' | 'calculator' | 'share' | 'profile';
 type HuntPeriod = '7d'|'30d'|'all';
 type PerformanceMetric = 'profit'|'xp'|'xpHour'|'profitHour';
 const C = {
@@ -88,9 +88,13 @@ export function AppScreen({tab}: {tab: Tab}) {
   const [importError, setImportError] = useState('');
   const [reportExporting, setReportExporting] = useState(false);
   const [reportExportError, setReportExportError] = useState('');
-  const [tcRealPer250, setTcRealPer250] = useState('');
+  const [tcRealLotAmount, setTcRealLotAmount] = useState('1');
+  const [tcBuyRealAmount, setTcBuyRealAmount] = useState('');
+  const [tcSellRealAmount, setTcSellRealAmount] = useState('');
   const [tcAmount, setTcAmount] = useState('1');
   const [tcGpAmount, setTcGpAmount] = useState('');
+  const [calculatorTcAmount, setCalculatorTcAmount] = useState('1');
+  const [calculatorGpAmount, setCalculatorGpAmount] = useState('');
   const [tcRatesLoaded, setTcRatesLoaded] = useState(false);
   const { width: screenWidth } = useWindowDimensions();
   const desktop = Platform.OS === 'web' && screenWidth >= 900;
@@ -113,7 +117,9 @@ export function AppScreen({tab}: {tab: Tab}) {
     let active = true;
     loadTibiaCoinRates().then(rates => {
       if (!active) return;
-      setTcRealPer250(rates.realPer250 ? localizedAmount(rates.realPer250, 2, 2) : '');
+      setTcRealLotAmount(rates.realLotAmount ? localizedAmount(rates.realLotAmount) : '1');
+      setTcBuyRealAmount(rates.realBuyAmount ? localizedAmount(rates.realBuyAmount, 2, 2) : '');
+      setTcSellRealAmount(rates.realSellAmount ? localizedAmount(rates.realSellAmount, 2, 2) : (rates.realPer250 ? localizedAmount(rates.realPer250, 2, 2) : ''));
       setTcAmount(rates.tcAmount ? localizedAmount(rates.tcAmount) : '1');
       setTcGpAmount(rates.gpAmount ? localizedAmount(rates.gpAmount) : '');
       setTcRatesLoaded(true);
@@ -122,10 +128,12 @@ export function AppScreen({tab}: {tab: Tab}) {
   }, []);
   useEffect(() => {
     if (!tcRatesLoaded) return;
-    const rates: TibiaCoinRates = { realPer250: asDecimal(tcRealPer250), tcAmount: asDecimal(tcAmount), gpAmount: asDecimal(tcGpAmount) };
+    const cashLot = asDecimal(tcRealLotAmount);
+    const sellAmount = asDecimal(tcSellRealAmount);
+    const rates: TibiaCoinRates = { realPer250: cashLot > 0 ? sellAmount * 250 / cashLot : 0, realLotAmount: cashLot, realBuyAmount: asDecimal(tcBuyRealAmount), realSellAmount: sellAmount, tcAmount: asDecimal(tcAmount), gpAmount: asDecimal(tcGpAmount) };
     const timer = setTimeout(() => { void saveTibiaCoinRates(rates).catch(() => setToast('Não consegui salvar as taxas de TC.')); }, 550);
     return () => clearTimeout(timer);
-  }, [tcRatesLoaded, tcRealPer250, tcAmount, tcGpAmount]);
+  }, [tcRatesLoaded, tcRealLotAmount, tcBuyRealAmount, tcSellRealAmount, tcAmount, tcGpAmount]);
 
   const selectedHunt = hunts.find(h => h.id === selected) ?? null;
   const detailHunt = hunts.find(h => h.id === detailHuntId) ?? null;
@@ -161,10 +169,22 @@ export function AppScreen({tab}: {tab: Tab}) {
   }, [hunts, period]);
   const totals = (rows: Hunt[]) => rows.reduce((a,h) => ({ xp:a.xp+h.xp, loot:a.loot+h.loot, supplies:a.supplies+h.supplies, profit:a.profit+h.loot-h.supplies, minutes:a.minutes+h.duration }), { xp:0, loot:0, supplies:0, profit:0, minutes:0 });
   const allTotals = totals(hunts), reportTotals = totals(filtered);
-  const huntEstimate = estimateHuntValueInReal(reportTotals.profit, { realPer250: asDecimal(tcRealPer250), tcAmount: asDecimal(tcAmount), gpAmount: asDecimal(tcGpAmount) });
+  const tcRealPer250 = asDecimal(tcRealLotAmount) > 0 ? asDecimal(tcSellRealAmount) * 250 / asDecimal(tcRealLotAmount) : 0;
+  const currentTcRates: TibiaCoinRates = { realPer250: tcRealPer250, realLotAmount: asDecimal(tcRealLotAmount), realBuyAmount: asDecimal(tcBuyRealAmount), realSellAmount: asDecimal(tcSellRealAmount), tcAmount: asDecimal(tcAmount), gpAmount: asDecimal(tcGpAmount) };
+  const huntEstimate = estimateHuntValueInReal(reportTotals.profit, currentTcRates);
   const tcRateGpPerTc = huntEstimate.gpPerTc;
   const huntTcEquivalent = huntEstimate.tcEquivalent;
   const huntRealEstimate = huntEstimate.realValue;
+  const calculatorTc = asDecimal(calculatorTcAmount);
+  const calculatorGp = asDecimal(calculatorGpAmount);
+  const calculatorTrade = estimateTibiaCoinTrade(calculatorTc, currentTcRates);
+  const calculatorBuyRealPerTc = calculatorTrade.buyRealPerTc;
+  const calculatorSellRealPerTc = calculatorTrade.sellRealPerTc;
+  const calculatorGpValue = calculatorTrade.gpValue;
+  const calculatorTcValue = tcRateGpPerTc > 0 ? calculatorGp / tcRateGpPerTc : 0;
+  const calculatorCashBuy = calculatorTrade.buyCost;
+  const calculatorCashSell = calculatorTrade.saleRevenue;
+  const calculatorCashProfit = calculatorTrade.cashProfit;
   const daily = useMemo(() => {
     const days = Array.from({length:7},(_,i) => { const d = new Date(); d.setDate(d.getDate() - (6-i)); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; });
     return days.map(date => ({ date, xp: hunts.filter(h=>h.date===date).reduce((s,h)=>s+h.xp,0) }));
@@ -240,7 +260,7 @@ export function AppScreen({tab}: {tab: Tab}) {
     setReportExportError('');
     try {
       const fileName = `huntlog-relatorio-${today()}.xlsx`;
-      const bytes = buildHuntWorkbook(filtered, { realPer250: asDecimal(tcRealPer250), tcAmount: asDecimal(tcAmount), gpAmount: asDecimal(tcGpAmount) });
+      const bytes = buildHuntWorkbook(filtered, { realPer250: tcRealPer250, realLotAmount: asDecimal(tcRealLotAmount), realBuyAmount: asDecimal(tcBuyRealAmount), realSellAmount: asDecimal(tcSellRealAmount), tcAmount: asDecimal(tcAmount), gpAmount: asDecimal(tcGpAmount) });
       if (Platform.OS === 'web') {
         const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         const url = URL.createObjectURL(blob);
@@ -406,21 +426,58 @@ export function AppScreen({tab}: {tab: Tab}) {
     <View style={s.reportHero}><View><Text style={s.reportLabel}>LUCRO LÍQUIDO</Text><Text style={s.reportProfit}>{money(reportTotals.profit)}</Text><View style={s.profitTag}><ArrowUpRight size={13} color={C.green}/><Text style={s.profitTagText}>NO PERÍODO SELECIONADO</Text></View></View><View style={s.reportHeroIcon}><TrendingUp size={22} color={C.green}/></View></View>
     <View style={s.reportGrid}><View style={s.reportTile}><Zap size={16} color={C.cyan}/><Text style={s.tileLabel}>XP TOTAL</Text><Text style={s.tileValue}>{xpShort(reportTotals.xp)}</Text></View><View style={s.reportTile}><Coins size={16} color={C.orange}/><Text style={s.tileLabel}>LOOT BRUTO</Text><Text style={s.tileValue}>{money(reportTotals.loot)}</Text></View><View style={s.reportTile}><Swords size={16} color={C.lime}/><Text style={s.tileLabel}>SESSÕES</Text><Text style={s.tileValue}>{filtered.length}</Text></View><View style={s.reportTile}><Timer size={16} color={C.cyan}/><Text style={s.tileLabel}>TEMPO DE HUNT</Text><Text style={s.tileValue}>{Math.floor(reportTotals.minutes/60)}h {reportTotals.minutes%60}m</Text></View></View>
     <View style={s.tcRateCard}>
-      <View style={s.tcRateHeading}><Coins size={16} color={C.lime}/><Text style={s.tcRateTitle}>CONVERSOR DE TIBIA COINS</Text></View>
-      <Text style={s.tcRateHint}>Defina qualquer lote de TC e quanto ele custa em GP. As taxas ficam salvas neste aparelho.</Text>
-      <View style={s.tcRateRow}>
-        <View style={s.tcRateField}><Text style={s.tcRateLabel}>VALOR DE 250 TC (R$)</Text><TextInput value={tcRealPer250} onChangeText={setTcRealPer250} placeholder="Ex.: 75,00" placeholderTextColor="#64747D" keyboardType="decimal-pad" style={s.tcRateInput}/></View>
-        <View style={s.tcRateField}><Text style={s.tcRateLabel}>TAMANHO DO LOTE (TC)</Text><TextInput value={tcAmount} onChangeText={setTcAmount} placeholder="Ex.: 1, 12,5 ou 250" placeholderTextColor="#64747D" keyboardType="decimal-pad" style={s.tcRateInput}/></View>
-      </View>
-      <View style={s.tcRateField}><Text style={s.tcRateLabel}>PREÇO DESSE LOTE EM GP</Text><TextInput value={tcGpAmount} onChangeText={setTcGpAmount} placeholder="Ex.: 12.500.000" placeholderTextColor="#64747D" keyboardType="decimal-pad" style={s.tcRateInput}/></View>
-      {tcRateGpPerTc>0?<Text style={s.tcRatePerCoin}>Taxa calculada: {formatCompactNumber(Math.round(tcRateGpPerTc))} gp por TC</Text>:<Text style={s.tcRateMissing}>Preencha o lote e o preço em GP para calcular.</Text>}
+      <View style={s.tcRateHeading}><Coins size={16} color={C.lime}/><Text style={s.tcRateTitle}>VALOR DAS HUNTS EM REAIS</Text></View>
+      <Text style={s.tcRateHint}>Cotação atual: {tcRateGpPerTc>0?`1 TC = ${formatCompactNumber(Math.round(tcRateGpPerTc))} gp`:'configure GP/TC'} · venda: {calculatorSellRealPerTc>0?`${formatCompactReais(calculatorSellRealPerTc)} por TC`:'configure R$ por TC'}.</Text>
       <View style={s.tcRateResult}><Text style={s.tcRateResultLabel}>LUCRO DA HUNT EM VALOR ESTIMADO</Text><Text style={s.tcRateResultValue}>{huntRealEstimate===null?'Configure as taxas acima':formatCompactReais(huntRealEstimate)}</Text><Text style={s.tcRateResultMeta}>{huntRealEstimate===null?`${money(reportTotals.profit)} · lucro líquido no período selecionado`:`${formatCompactNumber(huntTcEquivalent)} TC equivalentes · ${money(reportTotals.profit)} líquidos no período`}</Text></View>
-      <Text style={s.tcRateFootnote}>Estimativa baseada nas taxas que você informou e no lucro líquido do filtro atual.</Text>
+      <Pressable onPress={()=>navigate('calculator')} style={s.calculatorReportsLink}><Text style={s.link}>ABRIR CALCULADORA DE TC</Text><ChevronRight size={14} color={C.lime}/></Pressable>
     </View>
     <View style={s.sectionHead}><Text style={s.sectionTitle}>XP NOS ÚLTIMOS 7 DIAS</Text><Text style={s.chartLegend}><View style={s.legendDot}/> XP</Text></View>
     <View style={s.chartCard}><View style={s.chartBars}>{daily.map((d,i)=><View style={s.barColumn} key={d.date}><Text style={s.barValue}>{d.xp?xpShort(d.xp):''}</Text><View style={s.barTrack}><LinearGradient colors={i===6?['#D5FF8D',C.lime]:['#4AA2AC','#377B87']} style={[s.bar,{height:`${Math.max(5, Math.round((d.xp/maxDaily)*100))}%` as any}]}/></View><Text style={s.barDate}>{toDate(d.date).toLocaleDateString('pt-BR',{weekday:'short'}).replace('.','')}</Text></View>)}</View></View>
     <View style={s.sectionHead}><Text style={s.sectionTitle}>HISTÓRICO DE HUNTS</Text><Text style={s.sectionNote}>{filtered.length} sessões</Text></View>
     {filtered.length ? <View style={s.card}>{filtered.map((h,i)=><View key={h.id}>{i>0&&<View style={s.separator}/>}<HuntRow h={h}/></View>)}</View> : <View style={s.smallEmpty}><Text style={s.smallEmptyText}>Nenhuma hunt neste período.</Text><Pressable onPress={openNew}><Text style={s.link}>REGISTRAR PRIMEIRA HUNT</Text></Pressable></View>}
+  </ScrollView>;
+
+  const Calculator = () => <ScrollView contentContainerStyle={s.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+    <Header eyebrow="CONVERSOR DE TIBIA COINS" title="Calculadora" right={<View style={s.roundIcon}><CalculatorIcon size={19} color={C.lime}/></View>} />
+    <Text style={s.performanceIntro}>Converta TC em GP e reais, ou descubra quantos TC equivalem ao lucro da sua hunt. As taxas ficam salvas neste aparelho.</Text>
+    <View style={s.tcRateCard}>
+      <View style={s.tcRateHeading}><Coins size={16} color={C.lime}/><Text style={s.tcRateTitle}>CONFIGURE SUA COTAÇÃO</Text></View>
+      <Text style={s.tcRateHint}>Informe qualquer lote, como 1, 50 ou 250 TC. Configure GP no Tibia e seus preços reais de compra e venda.</Text>
+      <View style={s.tcRateRow}>
+        <View style={s.tcRateField}><Text style={s.tcRateLabel}>LOTE DA COTAÇÃO DO TIBIA (TC)</Text><TextInput value={tcAmount} onChangeText={setTcAmount} placeholder="Ex.: 50 TC no Tibia" placeholderTextColor="#64747D" keyboardType="decimal-pad" style={s.tcRateInput}/></View>
+        <View style={s.tcRateField}><Text style={s.tcRateLabel}>PREÇO DESSE LOTE NO TIBIA (GP)</Text><TextInput value={tcGpAmount} onChangeText={setTcGpAmount} placeholder="Ex.: 12.500.000" placeholderTextColor="#64747D" keyboardType="numeric" style={s.tcRateInput}/></View>
+      </View>
+      {tcRateGpPerTc>0?<Text style={s.tcRatePerCoin}>Cotação no jogo: 1 TC = {formatCompactNumber(Math.round(tcRateGpPerTc))} gp</Text>:<Text style={s.tcRateMissing}>Preencha o tamanho do lote e o preço em GP.</Text>}
+      <View style={s.tcRateRow}>
+        <View style={s.tcRateField}><Text style={s.tcRateLabel}>LOTE DA COMPRA/VENDA (TC)</Text><TextInput value={tcRealLotAmount} onChangeText={setTcRealLotAmount} placeholder="Ex.: 1, 50 ou 250" placeholderTextColor="#64747D" keyboardType="decimal-pad" style={s.tcRateInput}/></View>
+        <View style={s.tcRateField}><Text style={s.tcRateLabel}>EU PAGO PARA COMPRAR (R$)</Text><TextInput value={tcBuyRealAmount} onChangeText={setTcBuyRealAmount} placeholder="Ex.: 60,00" placeholderTextColor="#64747D" keyboardType="decimal-pad" style={s.tcRateInput}/></View>
+      </View>
+      <View style={s.tcRateField}><Text style={s.tcRateLabel}>EU RECEBO QUANDO VENDO (R$)</Text><TextInput value={tcSellRealAmount} onChangeText={setTcSellRealAmount} placeholder="Ex.: 70,00" placeholderTextColor="#64747D" keyboardType="decimal-pad" style={s.tcRateInput}/></View>
+      {calculatorBuyRealPerTc>0&&calculatorSellRealPerTc>0?<Text style={s.tcRatePerCoin}>Compra {formatCompactReais(calculatorBuyRealPerTc)}/TC · venda {formatCompactReais(calculatorSellRealPerTc)}/TC</Text>:<Text style={s.tcRateMissing}>Preencha seus preços de compra e venda para calcular a margem em reais.</Text>}
+    </View>
+    <View style={s.card}>
+      <View style={s.tcRateHeading}><CalculatorIcon size={16} color={C.cyan}/><Text style={[s.tcRateTitle,{color:C.cyan}]}>CONVERTER TC PARA GP E REAIS</Text></View>
+      <Text style={s.tcRateHint}>Digite qualquer quantidade de TC, inclusive quebrada.</Text>
+      <View style={s.tcRateField}><Text style={s.tcRateLabel}>QUANTIDADE DE TC</Text><TextInput value={calculatorTcAmount} onChangeText={setCalculatorTcAmount} placeholder="Ex.: 12,5" placeholderTextColor="#64747D" keyboardType="decimal-pad" style={s.tcRateInput}/></View>
+      <View style={s.tcRateResult}><Text style={s.tcRateResultLabel}>COTAÇÃO DO LOTE NO TIBIA</Text><Text style={s.tcRateResultValue}>{tcRateGpPerTc>0?money(calculatorGpValue):'Configure a cotação acima'}</Text><Text style={s.tcRateResultMeta}>{tcRateGpPerTc>0?`${calculatorTc.toLocaleString('pt-BR')} TC × ${formatCompactNumber(Math.round(tcRateGpPerTc))} gp por TC`:'Informe o tamanho do lote e o valor em GP no Tibia.'}</Text></View>
+    </View>
+    <View style={s.card}>
+      <View style={s.tcRateHeading}><Coins size={16} color={C.orange}/><Text style={[s.tcRateTitle,{color:C.orange}]}>CONVERTER GP PARA TC</Text></View>
+      <Text style={s.tcRateHint}>Use para estimar o equivalente em TC e reais de qualquer saldo ou lucro.</Text>
+      <View style={s.tcRateField}><Text style={s.tcRateLabel}>VALOR EM GP</Text><TextInput value={calculatorGpAmount} onChangeText={setCalculatorGpAmount} placeholder="Ex.: 1.500.000.000" placeholderTextColor="#64747D" keyboardType="numeric" style={s.tcRateInput}/></View>
+      <View style={s.tcRateResult}><Text style={s.tcRateResultLabel}>EQUIVALENTE ESTIMADO</Text><Text style={s.tcRateResultValue}>{tcRateGpPerTc>0?`${formatCompactNumber(calculatorTcValue)} TC`:'Configure a cotação acima'}</Text><Text style={s.tcRateResultMeta}>{calculatorSellRealPerTc>0?`${money(calculatorGp)} ≈ ${formatCompactReais(calculatorTcValue*calculatorSellRealPerTc)} pela sua cotação de venda`:money(calculatorGp)}</Text></View>
+    </View>
+    <View style={s.tcRateCard}>
+      <View style={s.tcRateHeading}><Coins size={16} color={C.orange}/><Text style={s.tcRateTitle}>LUCRO NA COMPRA E VENDA DE TC</Text></View>
+      <Text style={s.tcRateHint}>Resultado em dinheiro para a quantidade escolhida, usando seus preços de compra e venda acima.</Text>
+      <View style={s.tcRateResult}><Text style={s.tcRateResultLabel}>MARGEM NESTE LOTE · {calculatorTc.toLocaleString('pt-BR')} TC</Text><Text style={[s.tcRateResultValue,{color:calculatorCashProfit>=0?C.green:C.red}]}>{calculatorBuyRealPerTc>0&&calculatorSellRealPerTc>0?formatCompactReais(calculatorCashProfit):'Preencha compra e venda'}</Text><Text style={s.tcRateResultMeta}>{calculatorBuyRealPerTc>0&&calculatorSellRealPerTc>0?`Compra: ${formatCompactReais(calculatorCashBuy)} · venda: ${formatCompactReais(calculatorCashSell)}`:'Informe quanto você paga e quanto recebe pelo lote configurado.'}</Text></View>
+    </View>
+    <View style={s.tcRateCard}>
+      <View style={s.tcRateHeading}><TrendingUp size={16} color={C.green}/><Text style={s.tcRateTitle}>LUCRO DAS SUAS HUNTS</Text></View>
+      <Text style={s.tcRateHint}>Estimativa do lucro líquido conforme o filtro selecionado em Relatórios.</Text>
+      <View style={s.tcRateResult}><Text style={s.tcRateResultLabel}>LUCRO ACUMULADO</Text><Text style={s.tcRateResultValue}>{huntRealEstimate===null?'Configure as taxas acima':formatCompactReais(huntRealEstimate)}</Text><Text style={s.tcRateResultMeta}>{huntRealEstimate===null?`${money(reportTotals.profit)} · período atual`:`${formatCompactNumber(huntTcEquivalent)} TC · ${money(reportTotals.profit)} líquidos no período`}</Text></View>
+      <Pressable onPress={()=>navigate('reports')} style={s.calculatorReportsLink}><Text style={s.link}>ABRIR RELATÓRIOS E ALTERAR O PERÍODO</Text><ChevronRight size={14} color={C.lime}/></Pressable>
+    </View>
   </ScrollView>;
 
   const Share = () => <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
@@ -487,14 +544,14 @@ export function AppScreen({tab}: {tab: Tab}) {
     </View></View>
   </Modal> : null;
 
-  const navItems = [{id:'home',label:'Início',shortLabel:'INÍCIO',Icon:Shield},{id:'hunts',label:'Minhas Hunts',shortLabel:'HUNTS',Icon:List},{id:'performance',label:'Desempenho',shortLabel:'DESEMP.',Icon:BarChart3},{id:'reports',label:'Relatórios',shortLabel:'RELATÓRIOS',Icon:TrendingUp},{id:'share',label:'Compartilhar',shortLabel:'COMPART.',Icon:Share2},{id:'profile',label:'Perfil',shortLabel:'PERFIL',Icon:UserRound}] as const;
+  const navItems = [{id:'home',label:'Início',shortLabel:'INÍCIO',Icon:Shield},{id:'hunts',label:'Minhas Hunts',shortLabel:'HUNTS',Icon:List},{id:'performance',label:'Desempenho',shortLabel:'DESEMP.',Icon:BarChart3},{id:'reports',label:'Relatórios',shortLabel:'RELATÓRIOS',Icon:TrendingUp},{id:'calculator',label:'Calculadora',shortLabel:'CALC.',Icon:CalculatorIcon},{id:'share',label:'Compartilhar',shortLabel:'COMPART.',Icon:Share2},{id:'profile',label:'Perfil',shortLabel:'PERFIL',Icon:UserRound}] as const;
   const navigate = (id: Tab) => router.replace(id==='home'?'/':`/${id}`);
   return <SafeAreaView style={s.safe} edges={['top','left','right']}><StatusBar barStyle="light-content"/>
     <View style={desktop?s.desktopShell:s.mobileShell}>
       {desktop&&<View style={s.sideBar}><View style={s.sideBrand}><View style={s.brandIcon}><Image source={require('./assets/huntlog-icon.png')} style={s.brandLogo} resizeMode="cover"/></View><View style={s.topBrand}><Text style={s.topBrandName}>HUNT<Text style={{color:C.lime}}>LOG</Text></Text><Text style={s.topBrandCaption}>TIBIA HUNT TRACKER</Text></View></View><Pressable style={s.sideAdd} onPress={openNew}><View style={s.sideAddIcon}><Plus size={17} color={C.bg}/></View><View style={{flex:1}}><Text style={s.sideAddText}>Registrar hunt</Text><Text style={s.sideAddSub}>Importar sessão do Tibia</Text></View><ChevronRight size={15} color={C.lime}/></Pressable><Text style={s.sideCaption}>SUA CONTA</Text>{navItems.map(item=><Pressable key={item.id} style={[s.sideItem,tab===item.id&&s.sideItemActive]} onPress={()=>navigate(item.id)}><item.Icon size={18} color={tab===item.id?C.lime:C.muted}/><Text style={[s.sideItemText,tab===item.id&&s.sideItemTextActive]}>{item.label}</Text></Pressable>)}<View style={s.sideBottom}><Text style={s.sideCharacter}>{primaryCharacter?.name??'Personagem não cadastrado'}</Text><Text style={s.sideCharacterMeta}>{hunts.length} hunts registradas</Text></View></View>}
       <View style={s.appMain}>
         {!desktop&&<View style={s.topBar}><View style={s.brandIcon}><Image source={require('./assets/huntlog-icon.png')} style={s.brandLogo} resizeMode="cover"/></View><View style={s.topBrand}><Text style={s.topBrandName}>HUNT<Text style={{color:C.lime}}>LOG</Text></Text><Text style={s.topBrandCaption}>TIBIA HUNT TRACKER</Text></View><Pressable style={s.topAdd} onPress={openNew}><Plus size={19} color={C.bg}/></Pressable></View>}
-        <View style={{flex:1}}>{tab==='home'?Home():tab==='hunts'?Hunts():tab==='performance'?Performance():tab==='reports'?Reports():tab==='share'?Share():Profile()}</View>
+        <View style={{flex:1}}>{tab==='home'?Home():tab==='hunts'?Hunts():tab==='performance'?Performance():tab==='reports'?Reports():tab==='calculator'?Calculator():tab==='share'?Share():Profile()}</View>
         {!desktop&&<View style={s.nav}>{navItems.map(item=><Pressable key={item.id} style={s.navItem} onPress={()=>navigate(item.id)}><View style={[s.navIconWrap,tab===item.id&&s.navIconActive]}><item.Icon size={18} color={tab===item.id?C.lime:C.muted}/></View><Text numberOfLines={1} style={[s.navLabel,tab===item.id&&s.navLabelActive]}>{item.shortLabel}</Text></Pressable>)}</View>}
       </View>
     </View>
@@ -564,6 +621,7 @@ const s = StyleSheet.create({
   tcRateResultLabel:{color:'#A1B9A8',fontSize:7,fontWeight:'900',letterSpacing:.6},
   tcRateResultValue:{color:C.green,fontSize:21,fontWeight:'900',marginTop:4},
   tcRateResultMeta:{color:'#B1C1B5',fontSize:8,lineHeight:13,marginTop:4},
+  calculatorReportsLink:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',paddingTop:12},
   tcRateFootnote:{color:C.muted,fontSize:8,lineHeight:12,marginTop:8},
   reportExportButton:{minHeight:46,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:9,paddingHorizontal:12,marginTop:-5,marginBottom:14,borderRadius:12,borderWidth:1,borderColor:'#536B3E',backgroundColor:'#1B2A22'},
   reportExportButtonDisabled:{opacity:.48},
@@ -583,7 +641,7 @@ const s = StyleSheet.create({
   sectionHead:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginBottom:11,marginTop:3},sectionTitle:{fontSize:10,fontWeight:'900',letterSpacing:1.25,color:'#C4CFD2'},sectionNote:{fontSize:10,color:C.muted,fontWeight:'600'},link:{fontSize:9,fontWeight:'900',letterSpacing:.6,color:C.lime,flexDirection:'row',alignItems:'center'},statsGrid:{flexDirection:'row',flexWrap:'wrap',gap:9,marginBottom:23},stat:{width:'48.5%',minHeight:104,borderRadius:15,backgroundColor:C.panel,borderWidth:1,borderColor:C.line,padding:12},statIcon:{width:28,height:28,borderRadius:9,alignItems:'center',justifyContent:'center'},statLabel:{position:'absolute',top:19,left:49,fontSize:8,fontWeight:'800',letterSpacing:.75,color:C.muted},statValue:{fontSize:19,fontWeight:'800',color:C.text,marginTop:8,letterSpacing:-.3},statSub:{fontSize:9,color:C.muted,marginTop:2},
   card:{borderRadius:15,borderWidth:1,borderColor:C.line,backgroundColor:C.panel,overflow:'hidden'},huntRow:{minHeight:69,paddingHorizontal:12,paddingVertical:10,flexDirection:'row',alignItems:'center'},rowMark:{width:35,height:35,borderRadius:11,backgroundColor:'#C5F36B12',alignItems:'center',justifyContent:'center',marginRight:10},rowTitle:{color:C.text,fontWeight:'700',fontSize:12,marginBottom:4},rowMeta:{color:C.muted,fontSize:9,fontWeight:'600'},rowGain:{fontSize:11,fontWeight:'800',marginBottom:4},separator:{height:1,marginLeft:57,backgroundColor:C.line},
   empty:{borderRadius:17,borderWidth:1,borderColor:C.line,backgroundColor:C.panel,paddingHorizontal:24,paddingVertical:27,alignItems:'center'},emptyIcon:{width:48,height:48,borderRadius:16,backgroundColor:'#1A2833',alignItems:'center',justifyContent:'center',marginBottom:13},emptyTitle:{fontWeight:'800',fontSize:14,color:C.text},emptyText:{textAlign:'center',fontSize:11,lineHeight:18,color:C.muted,marginTop:6,maxWidth:240},emptyButton:{height:36,borderRadius:10,backgroundColor:C.lime,paddingHorizontal:13,flexDirection:'row',alignItems:'center',gap:6,marginTop:16},emptyButtonText:{fontSize:9,fontWeight:'900',letterSpacing:.5,color:C.bg},bigAdd:{borderRadius:13,overflow:'hidden',marginTop:15},bigAddGradient:{height:49,paddingHorizontal:14,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:9},bigAddText:{flex:1,textAlign:'center',fontSize:10,fontWeight:'900',letterSpacing:.75,color:C.bg},tip:{textAlign:'center',fontSize:8,color:'#5E707B',fontWeight:'700',letterSpacing:.7,marginTop:11},
-  nav:{height:69,backgroundColor:'#0C131B',borderTopWidth:1,borderColor:'#1B2832',flexDirection:'row',paddingHorizontal:4,paddingTop:7,paddingBottom:5},navItem:{flex:1,minWidth:0,alignItems:'center',justifyContent:'center',gap:3},navIconWrap:{width:31,height:26,alignItems:'center',justifyContent:'center',borderRadius:9},navIconActive:{backgroundColor:'#C5F36B12'},navLabel:{fontSize:7,fontWeight:'800',letterSpacing:.3,color:C.muted},navLabelActive:{color:C.lime},toast:{position:'absolute',bottom:79,alignSelf:'center',flexDirection:'row',alignItems:'center',gap:8,paddingHorizontal:15,paddingVertical:11,borderRadius:13,backgroundColor:'#1A2B27',borderWidth:1,borderColor:'#335244'},toastText:{fontSize:11,fontWeight:'700',color:C.text},
+  nav:{height:69,backgroundColor:'#0C131B',borderTopWidth:1,borderColor:'#1B2832',flexDirection:'row',paddingHorizontal:3,paddingTop:7,paddingBottom:5},navItem:{flex:1,minWidth:0,alignItems:'center',justifyContent:'center',gap:3},navIconWrap:{width:31,height:26,alignItems:'center',justifyContent:'center',borderRadius:9},navIconActive:{backgroundColor:'#C5F36B12'},navLabel:{fontSize:6.5,fontWeight:'800',letterSpacing:.1,color:C.muted},navLabelActive:{color:C.lime},toast:{position:'absolute',bottom:79,alignSelf:'center',flexDirection:'row',alignItems:'center',gap:8,paddingHorizontal:15,paddingVertical:11,borderRadius:13,backgroundColor:'#1A2B27',borderWidth:1,borderColor:'#335244'},toastText:{fontSize:11,fontWeight:'700',color:C.text},
   roundIcon:{height:38,width:38,borderRadius:13,backgroundColor:C.panel,borderWidth:1,borderColor:C.line,alignItems:'center',justifyContent:'center'},periods:{height:41,borderRadius:12,backgroundColor:C.panel,padding:4,flexDirection:'row',marginTop:-2,marginBottom:16},period:{flex:1,alignItems:'center',justifyContent:'center',borderRadius:9},periodActive:{backgroundColor:'#27382E'},periodText:{fontSize:9,fontWeight:'800',letterSpacing:.65,color:C.muted},periodTextActive:{color:C.lime},reportHero:{backgroundColor:'#14241F',borderWidth:1,borderColor:'#345040',borderRadius:17,padding:16,flexDirection:'row',justifyContent:'space-between',alignItems:'center',marginBottom:10},reportLabel:{fontSize:9,fontWeight:'900',letterSpacing:1.25,color:'#9FB2A7'},reportProfit:{fontSize:28,fontWeight:'900',letterSpacing:-.6,color:C.green,marginTop:4},profitTag:{flexDirection:'row',alignItems:'center',gap:3,marginTop:7},profitTagText:{fontSize:8,fontWeight:'800',letterSpacing:.55,color:'#A6B7AA'},reportHeroIcon:{height:43,width:43,borderRadius:14,backgroundColor:'#8CE1A51A',alignItems:'center',justifyContent:'center'},reportGrid:{flexDirection:'row',flexWrap:'wrap',gap:9,marginBottom:21},reportTile:{width:'48.5%',backgroundColor:C.panel,borderWidth:1,borderColor:C.line,borderRadius:14,padding:12,minHeight:91},tileLabel:{fontSize:8,fontWeight:'800',letterSpacing:.75,color:C.muted,marginTop:8},tileValue:{fontSize:15,fontWeight:'800',color:C.text,marginTop:4},chartLegend:{color:C.muted,fontSize:9,fontWeight:'700'},legendDot:{width:6,height:6,borderRadius:4,backgroundColor:C.cyan},chartCard:{height:148,borderRadius:15,borderWidth:1,borderColor:C.line,backgroundColor:C.panel,paddingHorizontal:12,paddingTop:13,paddingBottom:9,marginBottom:21},chartBars:{flex:1,flexDirection:'row',justifyContent:'space-between',alignItems:'stretch',gap:8},barColumn:{flex:1,alignItems:'center',justifyContent:'flex-end'},barValue:{fontSize:8,color:C.muted,fontWeight:'700',height:13},barTrack:{height:88,width:'100%',justifyContent:'flex-end',alignItems:'center'},bar:{width:'58%',minHeight:5,borderRadius:4},barDate:{fontSize:8,color:C.muted,marginTop:6,fontWeight:'700'},smallEmpty:{alignItems:'center',padding:18,borderRadius:14,borderWidth:1,borderColor:C.line,backgroundColor:C.panel,gap:10},smallEmptyText:{color:C.muted,fontSize:11},
   shareIntro:{fontSize:12,lineHeight:18,color:C.muted,marginTop:-10,marginBottom:19},pickRow:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginBottom:10},pickCount:{borderRadius:10,paddingVertical:5,paddingHorizontal:9,backgroundColor:C.panel},pickCountText:{fontSize:9,color:C.muted,fontWeight:'700'},huntPills:{gap:8,paddingBottom:14},huntPill:{maxWidth:165,minWidth:130,backgroundColor:C.panel,borderWidth:1,borderColor:C.line,borderRadius:12,paddingVertical:9,paddingHorizontal:10},huntPillActive:{borderColor:'#6A8A45',backgroundColor:'#1B2A22'},huntPillText:{fontSize:10,color:'#BEC8CB',fontWeight:'700',marginTop:5},huntPillTextActive:{color:C.lime},pillDate:{fontSize:8,color:C.muted,marginTop:3,fontWeight:'700'},shareCard:{minHeight:305,borderRadius:19,overflow:'hidden',padding:18,borderWidth:1,borderColor:'#385147',marginTop:16},cardOrnament:{position:'absolute',width:170,height:170,right:-70,top:-69,borderRadius:100,borderWidth:24,borderColor:'#C5F36B0D'},shareCardHeader:{flexDirection:'row',alignItems:'center'},brandMark:{width:32,height:32,borderRadius:10,backgroundColor:C.lime,alignItems:'center',justifyContent:'center',marginRight:9},brandName:{fontSize:12,fontWeight:'900',letterSpacing:1,color:C.text},brandSub:{fontSize:7,fontWeight:'800',letterSpacing:1.2,color:'#889A9B',marginTop:3},cardDate:{marginLeft:'auto',flexDirection:'row',alignItems:'center',gap:5},cardDateText:{fontSize:9,fontWeight:'800',color:'#B8C4C5',letterSpacing:.5},cardRule:{height:1,backgroundColor:'#FFFFFF1B',marginVertical:13},cardLocLine:{flexDirection:'row',alignItems:'center',gap:6},cardLocation:{fontSize:17,fontWeight:'800',color:C.text,letterSpacing:-.2},cardChar:{fontSize:11,color:C.lime,fontWeight:'800',marginTop:5},cardCharMuted:{color:'#A5B4B5',fontWeight:'600'},cardStats:{flexDirection:'row',alignItems:'center',marginTop:18,marginBottom:13},cardStat:{flex:1},cardStatLabel:{fontSize:8,fontWeight:'900',letterSpacing:1,color:'#9BAEAF'},cardStatValue:{fontSize:21,fontWeight:'900',letterSpacing:-.5,marginTop:6},cardStatUnit:{fontSize:8,fontWeight:'800',letterSpacing:1,color:'#809293',marginTop:2},cardStatDivider:{width:1,height:44,backgroundColor:'#FFFFFF24',marginHorizontal:14},cardBreakdown:{flexDirection:'row',alignItems:'center',gap:10},cardBreakLabel:{fontSize:7,fontWeight:'900',letterSpacing:.9,color:'#8D9D9F'},cardBreakValue:{fontSize:10,fontWeight:'800',color:'#DFE7E8',marginTop:4},cardMinus:{color:C.muted,fontSize:12,marginTop:8},cardDuration:{marginLeft:'auto',flexDirection:'row',gap:5,alignItems:'center',backgroundColor:'#FFB96716',borderRadius:8,paddingVertical:6,paddingHorizontal:7},cardDurationText:{fontSize:8,fontWeight:'900',color:C.orange},cardFooter:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},cardFooterText:{fontSize:7,fontWeight:'900',letterSpacing:1,color:'#829393'},shareButton:{borderRadius:13,overflow:'hidden',marginTop:15},shareFootnote:{textAlign:'center',fontSize:7,color:'#677782',fontWeight:'800',letterSpacing:.7,marginTop:10},
   modalShade:{flex:1,backgroundColor:'#000A',justifyContent:'flex-end'},modalShadeDesktop:{justifyContent:'center',padding:24},modalWrap:{flex:1,justifyContent:'flex-end'},modalWrapDesktop:{justifyContent:'center'},modal:{maxHeight:'94%',backgroundColor:'#0D151E',borderTopLeftRadius:24,borderTopRightRadius:24,borderWidth:1,borderColor:'#273641',paddingHorizontal:20,paddingTop:20,paddingBottom:10},modalDesktop:{width:'100%',maxWidth:780,maxHeight:'92%',alignSelf:'center',borderRadius:22},formScroll:{flexShrink:1},modalHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginBottom:17},modalEyebrow:{fontSize:8,fontWeight:'900',letterSpacing:1.35,color:C.muted,marginBottom:5},modalTitle:{fontSize:22,fontWeight:'800',color:C.text},closeButton:{width:34,height:34,borderRadius:11,alignItems:'center',justifyContent:'center',backgroundColor:C.panel},formSection:{fontSize:9,fontWeight:'900',letterSpacing:1.2,color:C.lime,marginTop:8,marginBottom:11},importPanel:{padding:13,marginBottom:15,borderRadius:13,borderWidth:1,borderColor:'#2B4148',backgroundColor:'#101E26'},importHelp:{fontSize:10,lineHeight:15,color:'#A2B2B8',marginBottom:9},sessionInput:{minHeight:112,maxHeight:170,padding:10,borderRadius:9,borderWidth:1,borderColor:C.line,backgroundColor:'#0B141C',color:C.text,fontSize:10,lineHeight:15},importButton:{height:38,marginTop:9,borderRadius:9,backgroundColor:C.lime,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:7},importButtonText:{fontSize:9,fontWeight:'900',letterSpacing:.7,color:C.bg},importSummary:{gap:4,padding:9,marginTop:9,borderRadius:9,backgroundColor:'#172821'},importSummaryTitle:{fontSize:8,fontWeight:'900',color:C.green,letterSpacing:.45},importSummaryText:{fontSize:9,color:'#B5C5C3'},formRow:{flexDirection:'row',justifyContent:'space-between',gap:10},fieldWrap:{flex:1,marginBottom:12},fieldLabel:{fontSize:8,fontWeight:'900',letterSpacing:.8,color:'#A4B2B9',marginBottom:6},fieldHint:{fontSize:8,fontWeight:'800',letterSpacing:.45,color:C.muted,marginBottom:7},input:{height:43,backgroundColor:'#131F29',borderWidth:1,borderColor:'#263640',borderRadius:10,paddingHorizontal:11,color:C.text,fontSize:12,fontWeight:'600'},profileChoices:{gap:7,paddingBottom:12},profileChoice:{minWidth:110,maxWidth:165,paddingVertical:8,paddingHorizontal:10,borderRadius:10,backgroundColor:C.panel,borderWidth:1,borderColor:C.line},profileChoiceActive:{borderColor:'#6D8C4B',backgroundColor:'#263527'},profileChoiceName:{fontSize:10,fontWeight:'800',color:C.text},profileChoiceMeta:{fontSize:8,fontWeight:'700',color:C.muted,marginTop:3},vocRow:{flexDirection:'row',gap:7,marginBottom:10},vocPill:{flex:1,height:35,borderRadius:9,backgroundColor:C.panel,borderWidth:1,borderColor:C.line,alignItems:'center',justifyContent:'center'},vocPillActive:{borderColor:'#6D8C4B',backgroundColor:'#263527'},vocText:{fontSize:10,fontWeight:'800',color:C.muted},vocTextActive:{color:C.lime},primaryToggle:{minHeight:52,flexDirection:'row',alignItems:'center',gap:9,paddingHorizontal:10,paddingVertical:8,marginBottom:8,borderRadius:11,backgroundColor:C.panel,borderWidth:1,borderColor:C.line},primaryToggleActive:{backgroundColor:'#221F19',borderColor:'#5F5235'},primaryToggleTitle:{fontSize:8,fontWeight:'900',letterSpacing:.45,color:C.text},primaryToggleHint:{fontSize:8,color:C.muted,marginTop:3},checkbox:{width:19,height:19,borderRadius:6,borderWidth:1,borderColor:'#46555D',alignItems:'center',justifyContent:'center'},checkboxActive:{backgroundColor:C.lime,borderColor:C.lime},numberHint:{fontSize:8,lineHeight:12,color:C.muted,marginTop:-5,marginBottom:9},formError:{fontSize:10,lineHeight:15,color:C.red,marginBottom:9},saveButton:{borderRadius:12,overflow:'hidden',marginTop:3},saveGradient:{height:47,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:8},saveText:{fontSize:10,fontWeight:'900',letterSpacing:.9,color:C.bg},
