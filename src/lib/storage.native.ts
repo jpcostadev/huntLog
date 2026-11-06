@@ -182,5 +182,9 @@ export async function saveCharacter(input: CharacterInput) {
 
 export async function deleteHunt(id: number) {
   const db = await database();
+  const existing = await db.getFirstAsync<{id:number}>('SELECT id FROM hunts WHERE id=?', id);
+  if (!existing) throw new Error('A hunt não foi encontrada para apagar.');
   await db.runAsync('DELETE FROM hunts WHERE id=?', id);
+  const remaining = await db.getFirstAsync<{id:number}>('SELECT id FROM hunts WHERE id=?', id);
+  if (remaining) throw new Error('A hunt permaneceu salva após a tentativa de apagar.');
 }

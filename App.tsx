@@ -22,7 +22,7 @@ import {
 } from 'lucide-react-native';
 
 type Tab = 'home' | 'hunts' | 'performance' | 'reports' | 'calculator' | 'share' | 'profile';
-type HuntPeriod = '7d'|'30d'|'all';
+type HuntPeriod = '1d'|'7d'|'30d'|'all';
 type PerformanceMetric = 'profit'|'xp'|'xpHour'|'profitHour';
 const C = {
   bg: '#080D14', panel: '#101923', panel2: '#131F2B', line: '#20303C',
@@ -68,7 +68,7 @@ export function AppScreen({tab}: {tab: Tab}) {
   const [formError, setFormError] = useState('');
   const [formErrorTitle, setFormErrorTitle] = useState('Confira os dados da hunt');
   const [editing, setEditing] = useState<Hunt | null>(null);
-  const [period, setPeriod] = useState<'7d'|'30d'|'all'>('30d');
+  const [period, setPeriod] = useState<HuntPeriod>('30d');
   const [selected, setSelected] = useState<number | null>(null);
   const [detailHuntId, setDetailHuntId] = useState<number | null>(null);
   const [huntSort, setHuntSort] = useState<'recent'|'profit'|'xp'|'xpHour'>('recent');
@@ -137,11 +137,12 @@ export function AppScreen({tab}: {tab: Tab}) {
   const applyHuntFilters = (rows: Hunt[], query: string, selectedPeriod: HuntPeriod, exactDate: string) => {
     const normalizedQuery = query.trim().toLocaleLowerCase();
     const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - (selectedPeriod === '7d' ? 7 : 30));
+    const days = selectedPeriod === '1d' ? 0 : selectedPeriod === '7d' ? 7 : 30;
+    cutoff.setDate(cutoff.getDate() - days);
     cutoff.setHours(0,0,0,0);
     return rows.filter(h => {
       const matchesQuery = !normalizedQuery || `${h.location} ${h.character} ${h.vocation}`.toLocaleLowerCase().includes(normalizedQuery);
-      const matchesPeriod = selectedPeriod === 'all' || toDate(h.date) >= cutoff;
+      const matchesPeriod = selectedPeriod === 'all' || (selectedPeriod === '1d' ? h.date === today() : toDate(h.date) >= cutoff);
       const matchesExactDate = !exactDate.trim() || h.date === exactDate.trim();
       return matchesQuery && matchesPeriod && matchesExactDate;
     });
@@ -159,6 +160,7 @@ export function AppScreen({tab}: {tab: Tab}) {
   const shareList = useMemo(() => applyHuntFilters(hunts, shareQuery, sharePeriod, shareDate), [hunts, shareQuery, sharePeriod, shareDate]);
   const filtered = useMemo(() => {
     if (period === 'all') return hunts;
+    if (period === '1d') return hunts.filter(h => h.date === today());
     const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - (period === '7d' ? 7 : 30)); cutoff.setHours(0,0,0,0);
     return hunts.filter(h => toDate(h.date) >= cutoff);
   }, [hunts, period]);
@@ -166,7 +168,9 @@ export function AppScreen({tab}: {tab: Tab}) {
   const allTotals = totals(hunts), reportTotals = totals(filtered);
   const currentTcRates: TibiaCoinRates = { realPer250:0, realLotAmount:250, realBuyAmount:0, realSellAmount:0, tcAmount:25, gpAmount:asDecimal(tcGpAmount), sellTiers };
   const tcRateGpPerTc = currentTcRates.tcAmount > 0 ? currentTcRates.gpAmount / currentTcRates.tcAmount : 0;
+  const selectedHuntEstimate = selectedHunt ? estimateHuntValueInReal(selectedHunt.loot-selectedHunt.supplies,currentTcRates) : null;
   const lifetimeHuntEstimates = hunts.map(hunt => estimateHuntValueInReal(hunt.loot-hunt.supplies,currentTcRates));
+  const lifetimeTcEquivalent = lifetimeHuntEstimates.reduce((sum,estimate)=>sum+(estimate.gpPerTc>0?estimate.tcEquivalent:0),0);
   const lifetimeRealEstimate = lifetimeHuntEstimates.some(estimate=>estimate.realValue!==null)
     ? lifetimeHuntEstimates.reduce((sum,estimate)=>sum+(estimate.realValue??0),0) : null;
   const huntEstimates = filtered.map(hunt => ({hunt, estimate:estimateHuntValueInReal(hunt.loot-hunt.supplies,currentTcRates)}));
@@ -285,7 +289,17 @@ export function AppScreen({tab}: {tab: Tab}) {
     }
   };
   const remove = (h: Hunt) => {
-    const confirmAndDelete = async () => { await deleteStoredHunt(h.id); await refresh(); setToast('Hunt removida'); };
+    const confirmAndDelete = async () => {
+      try {
+        await deleteStoredHunt(h.id);
+        setHunts(current=>current.filter(item=>item.id!==h.id));
+        if (detailHuntId===h.id) setDetailHuntId(null);
+        await refresh();
+        setToast('Hunt removida');
+      } catch {
+        setToast('Não foi possível apagar a hunt. Tente novamente.');
+      }
+    };
     if (Platform.OS === 'web') {
       if (globalThis.confirm(`Apagar a hunt em ${h.location}?`)) void confirmAndDelete();
       return;
@@ -348,7 +362,8 @@ export function AppScreen({tab}: {tab: Tab}) {
   const Header = ({eyebrow, title, right}: {eyebrow:string; title:string; right?:React.ReactNode}) => <View style={s.header}><View><Text style={s.eyebrow}>{eyebrow}</Text><Text style={s.title}>{title}</Text></View>{right}</View>;
   const Stat = ({label,value,icon,color,sub}: {label:string;value:string;icon:React.ReactNode;color:string;sub?:string}) => <View style={s.stat}><View style={[s.statIcon,{backgroundColor:`${color}16` }]}>{icon}</View><Text style={s.statLabel}>{label}</Text><Text style={s.statValue}>{value}</Text>{sub ? <Text style={s.statSub}>{sub}</Text> : null}</View>;
   const HuntRow = ({h}: {h:Hunt}) => { const estimate=estimateHuntValueInReal(h.loot-h.supplies,currentTcRates); return <View style={s.huntRow}><Pressable style={s.rowMain} onPress={()=>openDetails(h)}><View style={s.rowMark}><Swords size={17} color={C.lime}/></View><View style={{flex:1}}><Text style={s.rowTitle} numberOfLines={1}>{h.location}</Text><Text style={s.rowMeta}>{h.character} · {h.vocation} · {dateLabel(h.date)}</Text></View><View style={s.rowNumbers}><Text style={[s.rowGain,{color:h.loot-h.supplies>=0?C.green:C.red}]}>{money(h.loot-h.supplies)}</Text><Text style={s.rowMeta}>{xpShort(h.xp)} XP</Text><Text style={s.rowReal}>{estimate.gpPerTc>0?`${localizedAmount(estimate.tcEquivalent,2)} TC · ${estimate.realValue===null?'—':formatCompactReais(estimate.realValue)}`:'Configure cotação'}</Text></View><ChevronRight size={16} color={C.muted} style={{marginLeft:6}}/></Pressable><Pressable accessibilityRole="button" accessibilityLabel={`Apagar hunt ${h.location}`} hitSlop={10} style={s.deleteButton} onPress={()=>remove(h)}><Trash2 size={16} color={C.red}/></Pressable></View>; };
-  const HuntFilters = ({query,onQuery,selectedPeriod,onPeriod,exactDate,onDate}: {query:string;onQuery:(value:string)=>void;selectedPeriod:HuntPeriod;onPeriod:(value:HuntPeriod)=>void;exactDate:string;onDate:(value:string)=>void}) => <View style={s.filters}><View style={s.searchBox}><Search size={16} color={C.muted}/><TextInput value={query} onChangeText={onQuery} placeholder="Buscar por hunt ou personagem" placeholderTextColor="#64747D" style={s.searchInput} returnKeyType="search"/></View><View style={s.periods}>{(['7d','30d','all'] as const).map((p,i)=><Pressable key={p} style={[s.period,s.periodCompact,selectedPeriod===p&&s.periodActive]} onPress={()=>onPeriod(p)}><Text style={[s.periodText,selectedPeriod===p&&s.periodTextActive]}>{['7 DIAS','30 DIAS','TUDO'][i]}</Text></Pressable>)}</View><View style={s.dateFilter}><CalendarDays size={15} color={C.muted}/><TextInput value={exactDate} onChangeText={onDate} placeholder="Data exata AAAA-MM-DD" placeholderTextColor="#64747D" style={s.searchInput} autoCapitalize="none"/><Pressable onPress={()=>onDate('')} hitSlop={8}><X size={15} color={C.muted}/></Pressable></View></View>;
+  const PeriodSelector = ({value,onChange}: {value:HuntPeriod;onChange:(value:HuntPeriod)=>void}) => <View style={s.periods}>{(['1d','7d','30d','all'] as const).map((periodOption,index)=><Pressable key={periodOption} style={[s.period,s.periodCompact,value===periodOption&&s.periodActive]} onPress={()=>onChange(periodOption)}><Text style={[s.periodText,s.periodTextCompact,value===periodOption&&s.periodTextActive]}>{['HOJE','7 DIAS','30 DIAS','TUDO'][index]}</Text></Pressable>)}</View>;
+  const HuntFilters = ({query,onQuery,selectedPeriod,onPeriod,exactDate,onDate}: {query:string;onQuery:(value:string)=>void;selectedPeriod:HuntPeriod;onPeriod:(value:HuntPeriod)=>void;exactDate:string;onDate:(value:string)=>void}) => <View style={s.filters}><View style={s.searchBox}><Search size={16} color={C.muted}/><TextInput value={query} onChangeText={onQuery} placeholder="Buscar por hunt ou personagem" placeholderTextColor="#64747D" style={s.searchInput} returnKeyType="search"/></View><PeriodSelector value={selectedPeriod} onChange={onPeriod}/><View style={s.dateFilter}><CalendarDays size={15} color={C.muted}/><TextInput value={exactDate} onChangeText={onDate} placeholder="Data exata AAAA-MM-DD" placeholderTextColor="#64747D" style={s.searchInput} autoCapitalize="none"/><Pressable onPress={()=>onDate('')} hitSlop={8}><X size={15} color={C.muted}/></Pressable></View></View>;
 
   const Home = () => <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
     <Header eyebrow="SEU DIÁRIO DE AVENTURAS" title="Boa caçada, Tibiano." right={<View style={s.levelBadge}><Crown size={15} color={C.orange}/><Text style={s.levelBadgeText}>{hunts.length} HUNTS</Text></View>} />
@@ -361,16 +376,17 @@ export function AppScreen({tab}: {tab: Tab}) {
       </View>
       <ChevronRight size={17} color={C.muted}/>
     </Pressable>
+    <View style={s.sectionHead}><Text style={s.sectionTitle}>RESUMO DO PERÍODO</Text><Text style={s.sectionNote}>{period==='1d'?'Hoje':period==='7d'?'Últimos 7 dias':period==='30d'?'Últimos 30 dias':'Todo o histórico'}</Text></View>
+    <PeriodSelector value={period} onChange={setPeriod}/>
     <LinearGradient colors={['#192D31','#112329','#121D26']} start={{x:0,y:0}} end={{x:1,y:1}} style={s.hero}>
       <View style={s.heroTop}><View style={s.live}><View style={s.liveDot}/><Text style={s.liveText}>SEU PROGRESSO</Text></View><Sparkles size={17} color={C.lime}/></View>
-      <Text style={s.heroLabel}>LUCRO ACUMULADO</Text><Text style={s.heroAmount}>{money(allTotals.profit)}</Text>
-      <View style={s.heroRealRow}><View><Text style={s.heroRealLabel}>VALOR ESTIMADO EM REAIS</Text><Text style={s.heroRealAmount}>{lifetimeRealEstimate===null?'Configure cotação e faixas':formatCompactReais(lifetimeRealEstimate)}</Text></View><View style={s.heroRealIcon}><Coins size={17} color={C.green}/></View></View>
-      <View style={s.heroDivider}/><View style={s.heroFoot}><View style={s.heroMetric}><Zap size={14} color={C.cyan}/><Text style={s.heroMetricText}>{xpShort(allTotals.xp)} XP total</Text></View><View style={s.heroMetric}><Activity size={14} color={C.orange}/><Text style={s.heroMetricText}>{(allTotals.minutes/60).toFixed(1).replace('.',',')}h caçadas</Text></View><Text style={s.heroHint}>DESDE O INÍCIO</Text></View>
+      <Text style={s.heroLabel}>LUCRO NO PERÍODO</Text><Text style={s.heroAmount}>{money(reportTotals.profit)}</Text>
+      <View style={s.heroRealRow}><View><Text style={s.heroRealLabel}>TC ESTIMADAS · VALOR EM REAIS</Text><Text style={s.heroRealAmount}>{huntTcEquivalent>0?`${localizedAmount(huntTcEquivalent,2)} TC · ${huntRealEstimate===null?'Configure as faixas':formatCompactReais(huntRealEstimate)}`:'Sem lucro no período selecionado'}</Text></View><View style={s.heroRealIcon}><Coins size={17} color={C.green}/></View></View>
+      <View style={s.heroDivider}/><View style={s.heroFoot}><View style={s.heroMetric}><Zap size={14} color={C.cyan}/><Text style={s.heroMetricText}>{xpShort(reportTotals.xp)} XP</Text></View><View style={s.heroMetric}><Activity size={14} color={C.orange}/><Text style={s.heroMetricText}>{(reportTotals.minutes/60).toFixed(1).replace('.',',')}h caçadas</Text></View><Text style={s.heroHint}>{period==='1d'?'HOJE':period==='7d'?'7 DIAS':period==='30d'?'30 DIAS':'TUDO'}</Text></View>
       <View style={s.heroGlow}/>
     </LinearGradient>
-    <View style={s.sectionHead}><Text style={s.sectionTitle}>VISÃO GERAL</Text><Text style={s.sectionNote}>Todas as hunts</Text></View>
-    <View style={s.statsGrid}><Stat label="EXPERIÊNCIA" value={xpShort(allTotals.xp)} icon={<Zap size={17} color={C.cyan}/>} color={C.cyan} sub="XP acumulada"/><Stat label="LOOT" value={xpShort(allTotals.loot)} icon={<Coins size={17} color={C.orange}/>} color={C.orange} sub="bruto coletado"/><Stat label="SUPPLIES" value={xpShort(allTotals.supplies)} icon={<ArrowDownLeft size={17} color={C.red}/>} color={C.red} sub="gasto total"/><Stat label="LUCRO LÍQUIDO" value={xpShort(allTotals.profit)} icon={<TrendingUp size={17} color={C.green}/>} color={C.green} sub="loot − supplies"/></View>
-    {lifetimeRealEstimate!==null&&<Text style={s.homeRealHint}>Estimativa baseada nas faixas de TC cadastradas · {hunts.length} hunts</Text>}
+    <View style={s.sectionHead}><Text style={s.sectionTitle}>ACUMULADO DESDE O INÍCIO</Text><Text style={s.sectionNote}>{hunts.length} hunts</Text></View>
+    <View style={s.statsGrid}><Stat label="EXPERIÊNCIA" value={xpShort(allTotals.xp)} icon={<Zap size={17} color={C.cyan}/>} color={C.cyan} sub="XP acumulada"/><Stat label="LOOT" value={xpShort(allTotals.loot)} icon={<Coins size={17} color={C.orange}/>} color={C.orange} sub="bruto coletado"/><Stat label="SUPPLIES" value={xpShort(allTotals.supplies)} icon={<ArrowDownLeft size={17} color={C.red}/>} color={C.red} sub="gasto total"/><Stat label="LUCRO LÍQUIDO" value={xpShort(allTotals.profit)} icon={<TrendingUp size={17} color={C.green}/>} color={C.green} sub="loot − supplies"/><Stat label="TC ESTIMADAS" value={localizedAmount(lifetimeTcEquivalent,2)} icon={<Coins size={17} color={C.lime}/>} color={C.lime} sub="GP convertido em TC"/><Stat label="VALOR ESTIMADO" value={lifetimeRealEstimate===null?'—':formatCompactReais(lifetimeRealEstimate)} icon={<TrendingUp size={17} color={C.green}/>} color={C.green} sub="soma por hunt"/></View>
     <View style={s.sectionHead}><Text style={s.sectionTitle}>MINHAS HUNTS</Text><Text style={s.sectionNote}>{huntList.length} encontradas</Text></View>
     {HuntFilters({query:huntQuery,onQuery:setHuntQuery,selectedPeriod:huntPeriod,onPeriod:setHuntPeriod,exactDate:huntDate,onDate:setHuntDate})}
     {huntList.length ? <View style={s.card}>{huntList.map((h,i)=><View key={h.id}>{i>0&&<View style={s.separator}/>}<HuntRow h={h}/></View>)}</View> : <View style={s.smallEmpty}><Text style={s.smallEmptyText}>{hunts.length?'Nenhuma hunt corresponde à busca.':'Seu grimório está em branco.'}</Text>{!hunts.length&&<Pressable onPress={openNew}><Text style={s.link}>REGISTRAR PRIMEIRA HUNT</Text></Pressable>}</View>}
@@ -415,7 +431,7 @@ export function AppScreen({tab}: {tab: Tab}) {
 
   const Reports = () => <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
     <Header eyebrow="NÚMEROS DA SUA JORNADA" title="Relatórios" right={<View style={s.roundIcon}><ScrollText size={19} color={C.cyan}/></View>} />
-    <View style={s.periods}>{(['7d','30d','all'] as const).map((p,i)=><Pressable key={p} style={[s.period,period===p&&s.periodActive]} onPress={()=>setPeriod(p)}><Text style={[s.periodText,period===p&&s.periodTextActive]}>{['7 DIAS','30 DIAS','TUDO'][i]}</Text></Pressable>)}</View>
+    <PeriodSelector value={period} onChange={setPeriod}/>
     <Pressable disabled={reportExporting||!filtered.length} onPress={exportReport} style={[s.reportExportButton,(!filtered.length||reportExporting)&&s.reportExportButtonDisabled]}><FileSpreadsheet size={17} color={C.lime}/><Text style={s.reportExportText}>{reportExporting?'GERANDO ARQUIVO…':'EXPORTAR RELATÓRIO EXCEL (.XLSX)'}</Text></Pressable>
     {reportExportError?<Text style={s.reportExportError}>{reportExportError}</Text>:null}
     <View style={s.reportHero}><View><Text style={s.reportLabel}>LUCRO LÍQUIDO</Text><Text style={s.reportProfit}>{money(reportTotals.profit)}</Text><View style={s.profitTag}><ArrowUpRight size={13} color={C.green}/><Text style={s.profitTagText}>NO PERÍODO SELECIONADO</Text></View></View><View style={s.reportHeroIcon}><TrendingUp size={22} color={C.green}/></View></View>
@@ -476,6 +492,7 @@ export function AppScreen({tab}: {tab: Tab}) {
         <View style={s.cardOrnament}/><View style={s.shareCardHeader}><View style={s.brandMark}><Swords size={17} color={C.bg}/></View><View><Text style={s.brandName}>HUNTLOG <Text style={{color:C.lime}}>TIBIA</Text></Text><Text style={s.brandSub}>DIÁRIO DE AVENTURAS</Text></View><View style={s.cardDate}><CalendarDays size={12} color={C.muted}/><Text style={s.cardDateText}>{dateLabel(selectedHunt.date)}</Text></View></View>
         <View style={s.cardRule}/><View style={s.cardLocLine}><MapPin size={14} color={C.lime}/><Text style={s.cardLocation}>{selectedHunt.location}</Text></View><Text style={s.cardChar}>{selectedHunt.character} <Text style={s.cardCharMuted}>· {selectedHunt.vocation} · LVL {selectedHunt.level||'—'}</Text></Text>
         <View style={s.cardStats}><View style={s.cardStat}><Text style={s.cardStatLabel}>EXPERIÊNCIA</Text><Text style={[s.cardStatValue,{color:C.cyan}]}>{xpShort(selectedHunt.xp)}</Text><Text style={s.cardStatUnit}>XP</Text></View><View style={s.cardStatDivider}/><View style={s.cardStat}><Text style={s.cardStatLabel}>LUCRO LÍQUIDO</Text><Text style={[s.cardStatValue,{color:selectedHunt.loot-selectedHunt.supplies>=0?C.green:C.red}]}>{money(selectedHunt.loot-selectedHunt.supplies)}</Text><Text style={s.cardStatUnit}>GP</Text></View></View>
+        <View style={s.cardCoinStats}><View style={s.cardStat}><Text style={s.cardStatLabel}>TC ESTIMADAS</Text><Text style={[s.cardCoinValue,{color:C.lime}]}>{selectedHuntEstimate&&selectedHuntEstimate.gpPerTc>0?localizedAmount(selectedHuntEstimate.tcEquivalent,2):'—'}</Text><Text style={s.cardStatUnit}>TC</Text></View><View style={s.cardStatDivider}/><View style={s.cardStat}><Text style={s.cardStatLabel}>VALOR ESTIMADO</Text><Text style={[s.cardCoinValue,{color:C.green}]}>{selectedHuntEstimate?.realValue===null||!selectedHuntEstimate? 'Configure a faixa':formatCompactReais(selectedHuntEstimate.realValue)}</Text><Text style={s.cardStatUnit}>{selectedHuntEstimate?.priceTier?`${n(selectedHuntEstimate.priceTier.lotTc)} TC · ${formatCompactReais(selectedHuntEstimate.priceTier.realPrice)} / pacote`:'CADASTRE UMA FAIXA'}</Text></View></View>
         <View style={s.cardBreakdown}><View><Text style={s.cardBreakLabel}>LOOT</Text><Text style={s.cardBreakValue}>{money(selectedHunt.loot)}</Text></View><Text style={s.cardMinus}>−</Text><View><Text style={s.cardBreakLabel}>SUPPLIES</Text><Text style={s.cardBreakValue}>{money(selectedHunt.supplies)}</Text></View><View style={s.cardDuration}><Timer size={13} color={C.orange}/><Text style={s.cardDurationText}>{selectedHunt.duration} MIN</Text></View></View>
         {selectedHunt.session&&<>
           <View style={[s.cardRule,s.sessionRule]}/>
@@ -498,6 +515,7 @@ export function AppScreen({tab}: {tab: Tab}) {
     <Header eyebrow="SUA CONTA DE AVENTUREIRO" title="Perfil" right={<View style={s.roundIcon}><UserRound size={19} color={C.lime}/></View>} />
     <View style={s.profileHero}><View style={s.profileHeroIcon}><Crown size={22} color={C.orange}/></View><View style={{flex:1}}><Text style={s.profileLabel}>PERSONAGEM PRINCIPAL</Text><Text style={s.profileName}>{primaryCharacter?.name ?? 'Cadastre seu personagem'}</Text><Text style={s.profileMeta}>{primaryCharacter ? `${primaryCharacter.vocation} · LEVEL ${primaryCharacter.level}` : 'Salve nome, vocação e level para agilizar suas hunts.'}</Text></View></View>
     {primaryCharacter&&<View style={s.profileXp}><Zap size={16} color={C.cyan}/><Text style={s.profileXpText}>{xpShort(primaryCharacter.registeredXp)} XP registrada em hunts</Text></View>}
+    <View style={s.tcRateCard}><View style={s.tcRateHeading}><Coins size={16} color={C.lime}/><Text style={s.tcRateTitle}>LUCRO ACUMULADO EM TC E REAIS</Text></View><Text style={s.profileCoinValue}>{lifetimeTcEquivalent>0?`${localizedAmount(lifetimeTcEquivalent,2)} TC`: 'Configure cotação e registre lucro'}</Text><Text style={s.tcRateHint}>{lifetimeRealEstimate===null?'Cadastre a cotação de 25 TC em GP e as faixas de venda na Calculadora.':`Estimativa total de ${formatCompactReais(lifetimeRealEstimate)} · soma da conversão individual de ${hunts.length} hunts.`}</Text><Pressable onPress={()=>navigate('calculator')} style={s.calculatorReportsLink}><Text style={s.link}>CONFIGURAR COTAÇÃO E FAIXAS</Text><ChevronRight size={14} color={C.lime}/></Pressable></View>
     <Text style={s.formSection}>CADASTRAR / ATUALIZAR PERSONAGEM</Text>
     <Text style={s.fieldLabel}>NOME DO PERSONAGEM</Text><TextInput value={profileName} onChangeText={setProfileName} placeholder="Ex.: Nero" placeholderTextColor="#566772" style={s.profileInput} autoCapitalize="words"/>
     <Text style={[s.fieldLabel,{marginTop:5}]}>VOCAÇÃO</Text><View style={s.vocRow}>{['EK','RP','MS','ED','Other'].map(v=><Pressable key={v} onPress={()=>setProfileVocation(v)} style={[s.vocPill,profileVocation===v&&s.vocPillActive]}><Text style={[s.vocText,profileVocation===v&&s.vocTextActive]}>{v}</Text></Pressable>)}</View>
@@ -645,6 +663,10 @@ const s = StyleSheet.create({
   huntEstimateHint:{color:C.muted,fontSize:8,marginTop:5},
   huntEstimateValue:{color:C.green,fontSize:15,fontWeight:'900'},
   reportHuntList:{marginTop:14,padding:13,borderRadius:12,borderWidth:1,borderColor:C.line,backgroundColor:'#0D151E'},
+  profileCoinValue:{color:C.green,fontSize:24,fontWeight:'900',marginBottom:4},
+  periodTextCompact:{fontSize:7,letterSpacing:.2},
+  cardCoinStats:{flexDirection:'row',alignItems:'center',paddingVertical:11,marginBottom:11,borderTopWidth:1,borderBottomWidth:1,borderColor:'#FFFFFF1B'},
+  cardCoinValue:{fontSize:17,fontWeight:'900',letterSpacing:-.3,marginTop:5},
   reportHuntListTitle:{color:C.lime,fontSize:9,fontWeight:'900',letterSpacing:.7,marginBottom:5},
   reportHuntRow:{paddingVertical:9,borderBottomWidth:1,borderColor:C.line},
   reportHuntTop:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:12},

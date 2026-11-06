@@ -144,6 +144,8 @@ export async function saveCharacter(input: CharacterInput) {
 
 export async function deleteHunt(id: number) {
   const data = read();
+  if (!data.hunts.some(hunt => hunt.id === id)) throw new Error('A hunt não foi encontrada para apagar.');
   const hunts = data.hunts.filter((hunt) => hunt.id !== id);
   write({ ...data, characters: refreshProfiles(hunts, data.characters) });
+  if (read().hunts.some(hunt => hunt.id === id)) throw new Error('A hunt permaneceu salva após a tentativa de apagar.');
 }

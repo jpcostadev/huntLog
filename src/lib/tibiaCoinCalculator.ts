@@ -48,5 +48,14 @@ export function estimateHuntValueInReal(profitGp: number, rates: TibiaCoinRates)
   const gpPerTc = rates.tcAmount > 0 ? rates.gpAmount / rates.tcAmount : 0;
   const tcEquivalent = gpPerTc > 0 ? profitGp / gpPerTc : 0;
   const trade = estimateTibiaCoinTrade(tcEquivalent, rates);
+  if (!trade.priceTier && rates.sellTiers?.length) {
+    const referenceTier = rates.sellTiers
+      .filter(tier => tier.lotTc > 0 && tier.realPrice > 0)
+      .sort((a, b) => a.minimumTc - b.minimumTc)[0];
+    if (referenceTier && tcEquivalent >= 0) {
+      const packageCount = tcEquivalent / referenceTier.lotTc;
+      return { gpPerTc, tcEquivalent, realValue: packageCount * referenceTier.realPrice, packageCount, soldTc: tcEquivalent, priceTier: referenceTier };
+    }
+  }
   return { gpPerTc, tcEquivalent, realValue: trade.saleRevenue, packageCount: trade.packageCount, soldTc: trade.soldTc, priceTier: trade.priceTier };
 }
