@@ -12,7 +12,7 @@ O instalador atualizado mais recente também fica disponível em [Instalador](In
 
 Depois de baixar, abra o arquivo `.exe` e siga as etapas do instalador.
 
-Para instalar no Android, baixe o [APK HuntLog Tibia 1.1.8](https://github.com/jpcostadev/huntLog/raw/refs/heads/main/Instalador/HuntLog-Android-1.1.8.apk) e abra o arquivo no celular. O APK traz o mesmo espaçamento corrigido dos botões de nomes salvos.
+Para instalar no Android, baixe o [APK HuntLog Tibia 1.1.9](https://github.com/jpcostadev/huntLog/raw/refs/heads/main/Instalador/HuntLog-Android-1.1.9.apk) e abra o arquivo no celular. O APK permite copiar a sessão importada completa e inclui o espaçamento corrigido dos botões de nomes salvos.
 
 ## Recursos
 
