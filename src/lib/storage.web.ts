@@ -11,7 +11,7 @@ function read(): StoredData {
   if (!raw) return { hunts: [], characters: [] };
   try {
     const parsed = JSON.parse(raw) as Partial<StoredData>;
-    return { hunts: (parsed.hunts ?? []).map((hunt) => ({ ...hunt, session: hunt.session ?? null })), characters: parsed.characters ?? [] };
+    return { hunts: (parsed.hunts ?? []).map((hunt) => ({ ...hunt, id: Number(hunt.id), session: hunt.session ?? null })), characters: parsed.characters ?? [] };
   } catch {
     return { hunts: [], characters: [] };
   }
@@ -148,4 +148,20 @@ export async function deleteHunt(id: number) {
   const hunts = data.hunts.filter((hunt) => hunt.id !== id);
   write({ ...data, characters: refreshProfiles(hunts, data.characters) });
   if (read().hunts.some(hunt => hunt.id === id)) throw new Error('A hunt permaneceu salva após a tentativa de apagar.');
+}
+
+export async function deleteHunts(ids: number[]) {
+  const targets = new Set(ids.map(Number));
+  if (!targets.size) return;
+  const data = read();
+  const hunts = data.hunts.filter(hunt => !targets.has(Number(hunt.id)));
+  if (hunts.length === data.hunts.length) throw new Error('As hunts selecionadas não foram encontradas. Atualize a lista e tente novamente.');
+  write({ ...data, hunts, characters: refreshProfiles(hunts, data.characters) });
+  if (read().hunts.some(hunt => targets.has(Number(hunt.id)))) throw new Error('Algumas hunts permaneceram salvas após a tentativa de apagar.');
+}
+
+export async function clearHunts() {
+  const data = read();
+  write({ ...data, hunts: [], characters: refreshProfiles([], data.characters) });
+  if (read().hunts.length) throw new Error('O histórico permaneceu salvo após a tentativa de limpar.');
 }

@@ -12,13 +12,13 @@ import { router } from 'expo-router';
 import { captureRef } from 'react-native-view-shot';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { deleteHunt as deleteStoredHunt, loadHuntData, loadSavedHuntLocations, loadTibiaCoinRates, saveCharacter as persistCharacter, saveHunt as persistHunt, saveHuntLocation, saveTibiaCoinRates } from './src/lib/storage';
+import { clearHunts as clearStoredHunts, deleteHunt as deleteStoredHunt, deleteHunts as deleteStoredHunts, loadHuntData, loadSavedHuntLocations, loadTibiaCoinRates, saveCharacter as persistCharacter, saveHunt as persistHunt, saveHuntLocation, saveTibiaCoinRates } from './src/lib/storage';
 import type { CharacterInput, CharacterProfile, Hunt, TibiaCoinPriceTier, TibiaCoinRates, TibiaSession } from './src/lib/models';
 import { parseTibiaSession } from './src/lib/tibiaSessionParser';
 import {
   Activity, AlertCircle, ArrowDownLeft, ArrowUpRight, CalendarDays, Calculator as CalculatorIcon, Check, ChevronRight, Coins, Crown,
   FileSpreadsheet, Flame, Image as ImageIcon, MapPin, Plus, Search, ScrollText, Share2, Shield, Sparkles,
-  BarChart3, Eye, List, Pencil, Swords, Timer, Trash2, TrendingUp, Trophy, UserRound, X, Zap,
+  BarChart3, Eye, List, Pencil, RefreshCw, Swords, Timer, Trash2, TrendingUp, Trophy, UserRound, X, Zap,
 } from 'lucide-react-native';
 
 type Tab = 'home' | 'hunts' | 'performance' | 'reports' | 'calculator' | 'share' | 'profile';
@@ -63,6 +63,9 @@ export function AppScreen({tab}: {tab: Tab}) {
   const [hunts, setHunts] = useState<Hunt[]>([]);
   const [characters, setCharacters] = useState<CharacterProfile[]>([]);
   const [savedHuntLocations, setSavedHuntLocations] = useState<string[]>([]);
+  const [refreshingHunts, setRefreshingHunts] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedHuntIds, setSelectedHuntIds] = useState<Set<number>>(new Set());
   const [formOpen, setFormOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
@@ -105,6 +108,19 @@ export function AppScreen({tab}: {tab: Tab}) {
     const data = await loadHuntData();
     setHunts(data.hunts);
     setCharacters(data.characters);
+  };
+  const refreshHuntsNow = async () => {
+    if (refreshingHunts) return;
+    setRefreshingHunts(true);
+    try {
+      await refresh();
+      setToast('Lista de hunts atualizada');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Erro ao ler os dados locais.';
+      setToast(`Não foi possível atualizar: ${message}`);
+    } finally {
+      setRefreshingHunts(false);
+    }
   };
   useEffect(() => {
     loadHuntData()
@@ -292,19 +308,69 @@ export function AppScreen({tab}: {tab: Tab}) {
     const confirmAndDelete = async () => {
       try {
         await deleteStoredHunt(h.id);
-        setHunts(current=>current.filter(item=>item.id!==h.id));
-        if (detailHuntId===h.id) setDetailHuntId(null);
-        await refresh();
-        setToast('Hunt removida');
-      } catch {
-        setToast('Não foi possível apagar a hunt. Tente novamente.');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Erro ao remover do armazenamento local.';
+        if (/não foi encontrada/i.test(message)) {
+          try {
+            const data = await loadHuntData();
+            setHunts(data.hunts);
+            setCharacters(data.characters);
+            if (!data.hunts.some(item => Number(item.id) === Number(h.id))) {
+              if (detailHuntId === h.id) setDetailHuntId(null);
+              setToast('A hunt já não estava salva; lista atualizada');
+              return;
+            }
+          } catch { /* Mostrar a falha real de leitura abaixo. */ }
+        }
+        setToast(`Não foi possível apagar: ${message}`);
+        return;
       }
+      setHunts(current=>current.filter(item=>Number(item.id)!==Number(h.id)));
+      if (detailHuntId===h.id) setDetailHuntId(null);
+      try { await refresh(); } catch { /* A remoção persistiu; manter a lista otimista. */ }
+      setToast('Hunt removida');
     };
     if (Platform.OS === 'web') {
       if (globalThis.confirm(`Apagar a hunt em ${h.location}?`)) void confirmAndDelete();
       return;
     }
     Alert.alert('Apagar hunt?', `A sessão em ${h.location} será removida.`, [{text:'Cancelar',style:'cancel'},{text:'Apagar',style:'destructive',onPress:()=>void confirmAndDelete()}]);
+  };
+  const removeSelected = () => {
+    const ids = [...selectedHuntIds];
+    if (!ids.length) return;
+    const run = async () => {
+      try {
+        await deleteStoredHunts(ids);
+        setHunts(current => current.filter(hunt => !selectedHuntIds.has(Number(hunt.id))));
+        setSelectedHuntIds(new Set());
+        setSelectionMode(false);
+        await refresh().catch(() => undefined);
+        setToast(`${ids.length} ${ids.length === 1 ? 'hunt apagada' : 'hunts apagadas'}`);
+      } catch (error) {
+        setToast(`Falha ao apagar: ${error instanceof Error ? error.message : 'erro no armazenamento local.'}`);
+      }
+    };
+    const message = `Apagar ${ids.length} ${ids.length === 1 ? 'hunt selecionada' : 'hunts selecionadas'}? Essa ação não pode ser desfeita.`;
+    if (Platform.OS === 'web') { if (globalThis.confirm(message)) void run(); return; }
+    Alert.alert('Apagar hunts selecionadas?', message, [{text:'Cancelar',style:'cancel'},{text:'Apagar',style:'destructive',onPress:()=>void run()}]);
+  };
+  const clearHistory = () => {
+    const run = async () => {
+      try {
+        await clearStoredHunts();
+        setHunts([]);
+        setSelectedHuntIds(new Set());
+        setSelectionMode(false);
+        await refresh().catch(() => undefined);
+        setToast('Histórico zerado; relatórios e desempenho atualizados');
+      } catch (error) {
+        setToast(`Falha ao zerar histórico: ${error instanceof Error ? error.message : 'erro no armazenamento local.'}`);
+      }
+    };
+    const message = 'Isso apaga todas as hunts e zera os relatórios e o desempenho. Personagens salvos e cotação de TC serão mantidos. Essa ação não pode ser desfeita.';
+    if (Platform.OS === 'web') { if (globalThis.confirm(message)) void run(); return; }
+    Alert.alert('Zerar histórico de hunts?', message, [{text:'Cancelar',style:'cancel'},{text:'Zerar histórico',style:'destructive',onPress:()=>void run()}]);
   };
   const chooseCharacter = (profile: CharacterProfile) => setForm({
     ...form, character:profile.name, vocation:profile.vocation, level:String(profile.level), primary:profile.isPrimary,
@@ -361,7 +427,7 @@ export function AppScreen({tab}: {tab: Tab}) {
 
   const Header = ({eyebrow, title, right}: {eyebrow:string; title:string; right?:React.ReactNode}) => <View style={s.header}><View><Text style={s.eyebrow}>{eyebrow}</Text><Text style={s.title}>{title}</Text></View>{right}</View>;
   const Stat = ({label,value,icon,color,sub}: {label:string;value:string;icon:React.ReactNode;color:string;sub?:string}) => <View style={s.stat}><View style={[s.statIcon,{backgroundColor:`${color}16` }]}>{icon}</View><Text style={s.statLabel}>{label}</Text><Text style={s.statValue}>{value}</Text>{sub ? <Text style={s.statSub}>{sub}</Text> : null}</View>;
-  const HuntRow = ({h}: {h:Hunt}) => { const estimate=estimateHuntValueInReal(h.loot-h.supplies,currentTcRates); return <View style={s.huntRow}><Pressable style={s.rowMain} onPress={()=>openDetails(h)}><View style={s.rowMark}><Swords size={17} color={C.lime}/></View><View style={{flex:1}}><Text style={s.rowTitle} numberOfLines={1}>{h.location}</Text><Text style={s.rowMeta}>{h.character} · {h.vocation} · {dateLabel(h.date)}</Text></View><View style={s.rowNumbers}><Text style={[s.rowGain,{color:h.loot-h.supplies>=0?C.green:C.red}]}>{money(h.loot-h.supplies)}</Text><Text style={s.rowMeta}>{xpShort(h.xp)} XP</Text><Text style={s.rowReal}>{estimate.gpPerTc>0?`${localizedAmount(estimate.tcEquivalent,2)} TC · ${estimate.realValue===null?'—':formatCompactReais(estimate.realValue)}`:'Configure cotação'}</Text></View><ChevronRight size={16} color={C.muted} style={{marginLeft:6}}/></Pressable><Pressable accessibilityRole="button" accessibilityLabel={`Apagar hunt ${h.location}`} hitSlop={10} style={s.deleteButton} onPress={()=>remove(h)}><Trash2 size={16} color={C.red}/></Pressable></View>; };
+  const HuntRow = ({h, selectable=false}: {h:Hunt; selectable?:boolean}) => { const estimate=estimateHuntValueInReal(h.loot-h.supplies,currentTcRates); const checked=selectedHuntIds.has(Number(h.id)); return <View style={s.huntRow}>{selectable&&selectionMode?<Pressable accessibilityRole="checkbox" accessibilityState={{checked}} accessibilityLabel={`Selecionar hunt ${h.location}`} style={[s.selectHuntButton,checked&&s.selectHuntButtonActive]} onPress={()=>setSelectedHuntIds(current=>{const next=new Set(current);if(next.has(Number(h.id)))next.delete(Number(h.id));else next.add(Number(h.id));return next;})}>{checked&&<Check size={15} color={C.bg}/>}</Pressable>:null}<Pressable style={s.rowMain} onPress={()=>selectionMode&&selectable?setSelectedHuntIds(current=>{const next=new Set(current);if(next.has(Number(h.id)))next.delete(Number(h.id));else next.add(Number(h.id));return next;}):openDetails(h)}><View style={s.rowMark}><Swords size={17} color={C.lime}/></View><View style={{flex:1}}><Text style={s.rowTitle} numberOfLines={1}>{h.location}</Text><Text style={s.rowMeta}>{h.character} · {h.vocation} · {dateLabel(h.date)}</Text></View><View style={s.rowNumbers}><Text style={[s.rowGain,{color:h.loot-h.supplies>=0?C.green:C.red}]}>{money(h.loot-h.supplies)}</Text><Text style={s.rowMeta}>{xpShort(h.xp)} XP</Text><Text style={s.rowReal}>{estimate.gpPerTc>0?`${localizedAmount(estimate.tcEquivalent,2)} TC · ${estimate.realValue===null?'—':formatCompactReais(estimate.realValue)}`:'Configure cotação'}</Text></View><ChevronRight size={16} color={C.muted} style={{marginLeft:6}}/></Pressable>{!selectionMode&&<Pressable accessibilityRole="button" accessibilityLabel={`Apagar hunt ${h.location}`} hitSlop={10} style={s.deleteButton} onPress={()=>remove(h)}><Trash2 size={16} color={C.red}/></Pressable>}</View>; };
   const PeriodSelector = ({value,onChange}: {value:HuntPeriod;onChange:(value:HuntPeriod)=>void}) => <View style={s.periods}>{(['1d','7d','30d','all'] as const).map((periodOption,index)=><Pressable key={periodOption} style={[s.period,s.periodCompact,value===periodOption&&s.periodActive]} onPress={()=>onChange(periodOption)}><Text style={[s.periodText,s.periodTextCompact,value===periodOption&&s.periodTextActive]}>{['HOJE','7 DIAS','30 DIAS','TUDO'][index]}</Text></Pressable>)}</View>;
   const HuntFilters = ({query,onQuery,selectedPeriod,onPeriod,exactDate,onDate}: {query:string;onQuery:(value:string)=>void;selectedPeriod:HuntPeriod;onPeriod:(value:HuntPeriod)=>void;exactDate:string;onDate:(value:string)=>void}) => <View style={s.filters}><View style={s.searchBox}><Search size={16} color={C.muted}/><TextInput value={query} onChangeText={onQuery} placeholder="Buscar por hunt ou personagem" placeholderTextColor="#64747D" style={s.searchInput} returnKeyType="search"/></View><PeriodSelector value={selectedPeriod} onChange={onPeriod}/><View style={s.dateFilter}><CalendarDays size={15} color={C.muted}/><TextInput value={exactDate} onChangeText={onDate} placeholder="Data exata AAAA-MM-DD" placeholderTextColor="#64747D" style={s.searchInput} autoCapitalize="none"/><Pressable onPress={()=>onDate('')} hitSlop={8}><X size={15} color={C.muted}/></Pressable></View></View>;
 
@@ -387,7 +453,7 @@ export function AppScreen({tab}: {tab: Tab}) {
     </LinearGradient>
     <View style={s.sectionHead}><Text style={s.sectionTitle}>ACUMULADO DESDE O INÍCIO</Text><Text style={s.sectionNote}>{hunts.length} hunts</Text></View>
     <View style={s.statsGrid}><Stat label="EXPERIÊNCIA" value={xpShort(allTotals.xp)} icon={<Zap size={17} color={C.cyan}/>} color={C.cyan} sub="XP acumulada"/><Stat label="LOOT" value={xpShort(allTotals.loot)} icon={<Coins size={17} color={C.orange}/>} color={C.orange} sub="bruto coletado"/><Stat label="SUPPLIES" value={xpShort(allTotals.supplies)} icon={<ArrowDownLeft size={17} color={C.red}/>} color={C.red} sub="gasto total"/><Stat label="LUCRO LÍQUIDO" value={xpShort(allTotals.profit)} icon={<TrendingUp size={17} color={C.green}/>} color={C.green} sub="loot − supplies"/><Stat label="TC ESTIMADAS" value={localizedAmount(lifetimeTcEquivalent,2)} icon={<Coins size={17} color={C.lime}/>} color={C.lime} sub="GP convertido em TC"/><Stat label="VALOR ESTIMADO" value={lifetimeRealEstimate===null?'—':formatCompactReais(lifetimeRealEstimate)} icon={<TrendingUp size={17} color={C.green}/>} color={C.green} sub="soma por hunt"/></View>
-    <View style={s.sectionHead}><Text style={s.sectionTitle}>MINHAS HUNTS</Text><Text style={s.sectionNote}>{huntList.length} encontradas</Text></View>
+    <View style={s.sectionHead}><Text style={s.sectionTitle}>MINHAS HUNTS</Text><View style={s.inlineActions}><Text style={s.sectionNote}>{huntList.length} encontradas</Text><Pressable accessibilityRole="button" accessibilityLabel="Atualizar lista de hunts" disabled={refreshingHunts} onPress={()=>void refreshHuntsNow()} style={s.refreshButton}><RefreshCw size={14} color={C.lime}/></Pressable></View></View>
     {HuntFilters({query:huntQuery,onQuery:setHuntQuery,selectedPeriod:huntPeriod,onPeriod:setHuntPeriod,exactDate:huntDate,onDate:setHuntDate})}
     {huntList.length ? <View style={s.card}>{huntList.map((h,i)=><View key={h.id}>{i>0&&<View style={s.separator}/>}<HuntRow h={h}/></View>)}</View> : <View style={s.smallEmpty}><Text style={s.smallEmptyText}>{hunts.length?'Nenhuma hunt corresponde à busca.':'Seu grimório está em branco.'}</Text>{!hunts.length&&<Pressable onPress={openNew}><Text style={s.link}>REGISTRAR PRIMEIRA HUNT</Text></Pressable>}</View>}
     <Pressable style={s.bigAdd} onPress={openNew}><LinearGradient colors={[C.lime,'#9FDF4E']} style={s.bigAddGradient}><Plus size={20} color={C.bg}/><Text style={s.bigAddText}>REGISTRAR NOVA HUNT</Text><ChevronRight size={18} color={C.bg}/></LinearGradient></Pressable>
@@ -395,13 +461,15 @@ export function AppScreen({tab}: {tab: Tab}) {
   </ScrollView>;
 
   const Hunts = () => <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
-    <Header eyebrow="SEU GRIMÓRIO DE AVENTURAS" title="Minhas Hunts" right={<View style={s.roundIcon}><List size={19} color={C.lime}/></View>} />
+    <Header eyebrow="SEU GRIMÓRIO DE AVENTURAS" title="Minhas Hunts" right={<Pressable accessibilityRole="button" accessibilityLabel="Atualizar lista de hunts" disabled={refreshingHunts} onPress={()=>void refreshHuntsNow()} style={s.roundIcon}><RefreshCw size={18} color={C.lime}/></Pressable>} />
     <View style={s.huntLibraryIntro}><Text style={s.huntLibraryTitle}>{hunts.length} {hunts.length===1?'hunt registrada':'hunts registradas'}</Text><Text style={s.huntLibrarySubtitle}>Toque em uma sessão para ver todos os detalhes. A edição fica dentro da ficha.</Text></View>
+    <View style={s.selectionToolbar}><Pressable style={[s.selectionAction,selectionMode&&s.selectionActionActive]} onPress={()=>{setSelectionMode(value=>!value);setSelectedHuntIds(new Set());}}><Text style={[s.selectionActionText,selectionMode&&s.selectionActionTextActive]}>{selectionMode?'Cancelar seleção':'Selecionar hunts'}</Text></Pressable>{selectionMode&&<><Pressable style={s.selectionAction} onPress={()=>setSelectedHuntIds(new Set(sortedHuntList.map(h=>Number(h.id))))}><Text style={s.selectionActionText}>Selecionar filtradas</Text></Pressable><Pressable disabled={!selectedHuntIds.size} style={[s.selectionAction,s.selectionDelete,!selectedHuntIds.size&&s.selectionDisabled]} onPress={removeSelected}><Text style={[s.selectionActionText,s.selectionDeleteText]}>{`Apagar (${selectedHuntIds.size})`}</Text></Pressable></>}</View>
     {HuntFilters({query:huntQuery,onQuery:setHuntQuery,selectedPeriod:huntPeriod,onPeriod:setHuntPeriod,exactDate:huntDate,onDate:setHuntDate})}
     <View style={s.sortHeader}><Text style={s.sectionTitle}>ORDENAR POR</Text><View style={s.sortChoices}>{([
       ['recent','RECENTES'],['profit','LUCRO'],['xp','XP'],['xpHour','XP/H'],
     ] as const).map(([id,label])=><Pressable key={id} onPress={()=>setHuntSort(id)} style={[s.sortChip,huntSort===id&&s.sortChipActive]}><Text style={[s.sortChipText,huntSort===id&&s.sortChipTextActive]}>{label}</Text></Pressable>)}</View></View>
-    {sortedHuntList.length ? <View style={s.card}>{sortedHuntList.map((h,i)=><View key={h.id}>{i>0&&<View style={s.separator}/>}<HuntRow h={h}/></View>)}</View> : <View style={s.smallEmpty}><Text style={s.smallEmptyText}>{hunts.length?'Nenhuma hunt corresponde aos filtros.':'Você ainda não registrou hunts.'}</Text>{!hunts.length&&<Pressable onPress={openNew}><Text style={s.link}>REGISTRAR PRIMEIRA HUNT</Text></Pressable>}</View>}
+    {sortedHuntList.length ? <View style={s.card}>{sortedHuntList.map((h,i)=><View key={h.id}>{i>0&&<View style={s.separator}/>}<HuntRow h={h} selectable/></View>)}</View> : <View style={s.smallEmpty}><Text style={s.smallEmptyText}>{hunts.length?'Nenhuma hunt corresponde aos filtros.':'Você ainda não registrou hunts.'}</Text>{!hunts.length&&<Pressable onPress={openNew}><Text style={s.link}>REGISTRAR PRIMEIRA HUNT</Text></Pressable>}</View>}
+    {!!hunts.length&&<Pressable style={s.clearHistoryButton} onPress={clearHistory}><Trash2 size={15} color={C.red}/><Text style={s.clearHistoryText}>ZERAR HISTÓRICO · APAGAR TODAS AS HUNTS</Text></Pressable>}
     <Pressable style={s.bigAdd} onPress={openNew}><LinearGradient colors={[C.lime,'#9FDF4E']} style={s.bigAddGradient}><Plus size={20} color={C.bg}/><Text style={s.bigAddText}>REGISTRAR NOVA HUNT</Text><ChevronRight size={18} color={C.bg}/></LinearGradient></Pressable>
   </ScrollView>;
 
@@ -694,6 +762,7 @@ const s = StyleSheet.create({
   importInputHint:{fontSize:8,lineHeight:12,marginTop:5,marginBottom:2},
   importInputHintReady:{color:C.green},
   importInputHintMissing:{color:C.orange},
+  inlineActions:{flexDirection:'row',alignItems:'center',gap:9},refreshButton:{width:30,height:30,borderRadius:10,backgroundColor:C.panel,borderWidth:1,borderColor:C.line,alignItems:'center',justifyContent:'center'},selectionToolbar:{flexDirection:'row',alignItems:'center',flexWrap:'wrap',gap:7,marginBottom:12},selectionAction:{minHeight:34,paddingHorizontal:12,borderRadius:10,backgroundColor:C.panel,borderWidth:1,borderColor:C.line,alignItems:'center',justifyContent:'center'},selectionActionActive:{borderColor:'#506E45',backgroundColor:'#24372C'},selectionActionText:{fontSize:9,fontWeight:'800',color:C.muted},selectionActionTextActive:{color:C.lime},selectionDelete:{borderColor:'#53323A',backgroundColor:'#2A1C24'},selectionDeleteText:{color:C.red},selectionDisabled:{opacity:.45},selectHuntButton:{width:28,height:28,marginRight:8,borderRadius:9,borderWidth:1,borderColor:C.muted,alignItems:'center',justifyContent:'center'},selectHuntButtonActive:{backgroundColor:C.lime,borderColor:C.lime},clearHistoryButton:{minHeight:42,marginTop:12,marginBottom:7,borderRadius:11,backgroundColor:'#21171D',borderWidth:1,borderColor:'#472B33',flexDirection:'row',alignItems:'center',justifyContent:'center',gap:8},clearHistoryText:{fontSize:9,fontWeight:'900',letterSpacing:.4,color:C.red},
   huntLibraryIntro:{padding:14,marginBottom:13,borderRadius:14,borderWidth:1,borderColor:C.line,backgroundColor:C.panel},huntLibraryTitle:{color:C.text,fontSize:13,fontWeight:'900'},huntLibrarySubtitle:{color:C.muted,fontSize:10,lineHeight:15,marginTop:4},sortHeader:{gap:8,marginBottom:10},sortChoices:{flexDirection:'row',flexWrap:'wrap',gap:6},sortChip:{minHeight:31,paddingHorizontal:11,borderRadius:9,alignItems:'center',justifyContent:'center',backgroundColor:C.panel,borderWidth:1,borderColor:C.line},sortChipActive:{backgroundColor:'#263527',borderColor:'#718E4B'},sortChipText:{color:C.muted,fontSize:8,fontWeight:'900',letterSpacing:.45},sortChipTextActive:{color:C.lime},performanceIntro:{color:C.muted,fontSize:11,lineHeight:17,marginTop:-8,marginBottom:15},metricPicker:{flexDirection:'row',flexWrap:'wrap',gap:7,marginTop:3,marginBottom:13},metricChip:{flexGrow:1},performanceSummary:{padding:15,marginBottom:12,borderRadius:15,borderWidth:1,borderColor:'#37534A',backgroundColor:'#13241F'},averageLine:{flexDirection:'row',alignItems:'center',justifyContent:'space-between'},averageLabel:{fontSize:8,fontWeight:'900',letterSpacing:.8,color:'#A2B5AA'},averageValue:{fontSize:17,fontWeight:'900',color:C.green},averageHint:{fontSize:9,color:'#91A39B',marginTop:6},performanceHighlights:{flexDirection:'row',gap:9,marginBottom:18},performanceHighlight:{flex:1,minWidth:0,padding:12,borderRadius:14,borderWidth:1},bestHighlight:{backgroundColor:'#1A2A20',borderColor:'#506B3C'},worstHighlight:{backgroundColor:'#2A211C',borderColor:'#644936'},highlightHeader:{flexDirection:'row',alignItems:'center',gap:6,marginBottom:10},highlightEyebrow:{fontSize:8,fontWeight:'900',letterSpacing:.6,color:C.text},highlightLocation:{fontSize:12,fontWeight:'900',color:C.text},highlightMeta:{fontSize:8,color:C.muted,marginTop:4},highlightValue:{fontSize:15,fontWeight:'900',color:C.lime,marginTop:12},highlightCompare:{fontSize:8,color:'#A8B7AE',marginTop:4},performanceListHeader:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginBottom:9},rankRow:{flexDirection:'row',gap:10,padding:12,marginBottom:8,borderRadius:13,borderWidth:1,borderColor:C.line,backgroundColor:C.panel},rankNumber:{width:26,height:26,borderRadius:9,alignItems:'center',justifyContent:'center',backgroundColor:'#1A2731'},rankNumberBest:{backgroundColor:'#3A4B25'},rankNumberText:{color:C.muted,fontSize:11,fontWeight:'900'},rankNumberTextBest:{color:C.lime},rankBody:{flex:1,minWidth:0},rankTitleLine:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',gap:8},rankTitle:{flex:1,color:C.text,fontSize:11,fontWeight:'800'},rankValue:{color:C.green,fontSize:10,fontWeight:'900'},rankMeta:{color:C.muted,fontSize:8,marginTop:4},rankTrack:{height:5,overflow:'hidden',borderRadius:4,backgroundColor:'#26333A',marginTop:9},rankFill:{height:'100%',borderRadius:4,backgroundColor:C.green},rankFillLow:{backgroundColor:C.orange},rankCompare:{fontSize:8,fontWeight:'800',marginTop:5},rankCompareGood:{color:C.green},rankCompareLow:{color:C.orange},
   detailsShade:{flex:1,justifyContent:'flex-end',backgroundColor:'#000B'},detailsShadeDesktop:{justifyContent:'center',padding:22},detailsModal:{width:'100%',maxHeight:'92%',padding:18,paddingBottom:12,borderTopLeftRadius:23,borderTopRightRadius:23,borderWidth:1,borderColor:'#30414A',backgroundColor:'#0D151E'},detailsModalDesktop:{maxWidth:700,alignSelf:'center',borderRadius:21},detailsHeader:{flexDirection:'row',alignItems:'center',gap:12,marginBottom:13},detailsTitle:{fontSize:21,fontWeight:'900',color:C.text},detailsSubtitle:{fontSize:10,fontWeight:'700',color:C.lime,marginTop:4},detailsScroll:{flexShrink:1},detailsStats:{flexDirection:'row',flexWrap:'wrap',gap:8,marginBottom:13},detailsStat:{width:'31.5%',minHeight:54,padding:9,borderRadius:10,borderWidth:1,borderColor:C.line,backgroundColor:C.panel},detailsStatLabel:{color:C.muted,fontSize:7,fontWeight:'900',letterSpacing:.7},detailsStatValue:{fontSize:11,fontWeight:'900',color:C.text,marginTop:5},detailsSessionHeader:{gap:5,marginTop:3,marginBottom:11},detailsTimes:{color:'#AABABD',fontSize:9,lineHeight:14},detailsListPanel:{padding:12,marginBottom:10,borderRadius:12,borderWidth:1,borderColor:'#2D4248',backgroundColor:'#101D24'},detailsEntityRow:{minHeight:27,flexDirection:'row',alignItems:'center',gap:10,borderBottomWidth:1,borderColor:'#FFFFFF0A'},detailsCount:{minWidth:55,color:C.cyan,fontSize:10,fontWeight:'900',fontVariant:['tabular-nums']},detailsEntityName:{flex:1,color:'#E0E7E8',fontSize:11,lineHeight:16},detailsEditButton:{height:46,marginTop:12,borderRadius:12,flexDirection:'row',alignItems:'center',justifyContent:'center',gap:8,backgroundColor:C.lime},detailsEditText:{fontSize:10,fontWeight:'900',letterSpacing:.8,color:C.bg},
   feedbackShade:{flex:1,backgroundColor:'#000B',alignItems:'center',justifyContent:'center',padding:24},feedbackCard:{width:'100%',maxWidth:380,padding:24,borderRadius:20,alignItems:'center',backgroundColor:'#111C27',borderWidth:1,borderColor:'#35434D',shadowColor:'#000',shadowOpacity:.35,shadowRadius:22,elevation:16},feedbackCardDesktop:{maxWidth:440},feedbackIcon:{width:54,height:54,borderRadius:18,alignItems:'center',justifyContent:'center',backgroundColor:'#FF75861A',marginBottom:16},feedbackTitle:{fontSize:18,fontWeight:'800',color:C.text,textAlign:'center',marginBottom:10},feedbackMessage:{fontSize:15,lineHeight:22,color:'#D7E0E4',textAlign:'center',marginBottom:22},feedbackButton:{minHeight:46,minWidth:130,paddingHorizontal:22,borderRadius:12,alignItems:'center',justifyContent:'center',backgroundColor:C.lime},feedbackButtonText:{fontSize:12,fontWeight:'900',letterSpacing:.8,color:C.bg},

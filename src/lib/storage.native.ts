@@ -188,3 +188,21 @@ export async function deleteHunt(id: number) {
   const remaining = await db.getFirstAsync<{id:number}>('SELECT id FROM hunts WHERE id=?', id);
   if (remaining) throw new Error('A hunt permaneceu salva após a tentativa de apagar.');
 }
+
+export async function deleteHunts(ids: number[]) {
+  const targets = [...new Set(ids.map(Number).filter(Number.isFinite))];
+  if (!targets.length) return;
+  const db = await database();
+  await db.withTransactionAsync(async () => {
+    for (const id of targets) await db.runAsync('DELETE FROM hunts WHERE id=?', id);
+  });
+  const remaining = await db.getFirstAsync<{id:number}>(`SELECT id FROM hunts WHERE id IN (${targets.map(() => '?').join(',')}) LIMIT 1`, ...targets);
+  if (remaining) throw new Error('Algumas hunts permaneceram salvas após a tentativa de apagar.');
+}
+
+export async function clearHunts() {
+  const db = await database();
+  await db.runAsync('DELETE FROM hunts');
+  const remaining = await db.getFirstAsync<{id:number}>('SELECT id FROM hunts LIMIT 1');
+  if (remaining) throw new Error('O histórico permaneceu salvo após a tentativa de limpar.');
+}
