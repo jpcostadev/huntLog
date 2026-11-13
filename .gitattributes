@@ -1,0 +1,2 @@
+Instalador/*.exe filter=lfs diff=lfs merge=lfs -text
+Instalador/*.apk filter=lfs diff=lfs merge=lfs -text
