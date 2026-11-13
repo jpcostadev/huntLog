@@ -6,11 +6,11 @@ Aplicativo para registrar suas hunts, acompanhar XP e lucro e compartilhar seus 
 
 ### Windows 64 bits
 
-[Baixar a versão 1.3.37 para Windows](https://github.com/jpcostadev/huntLog/raw/refs/heads/main/Instalador/HuntLog-Tibia-Setup-1.3.37-x64.exe) · [Versão mais recente](https://github.com/jpcostadev/huntLog/raw/refs/heads/main/Instalador/HuntLog-Tibia-Setup-latest.exe)
+[Baixar a versão 1.3.38 para Windows](https://github.com/jpcostadev/huntLog/raw/refs/heads/main/Instalador/HuntLog-Tibia-Setup-1.3.38-x64.exe) · [Versão mais recente](https://github.com/jpcostadev/huntLog/raw/refs/heads/main/Instalador/HuntLog-Tibia-Setup-latest.exe)
 
 ### Android
 
-[Baixar a versão 1.3.33 para Android (APK)](https://media.githubusercontent.com/media/jpcostadev/huntLog/refs/heads/main/Instalador/HuntLog-Android-1.3.33.apk) · [Versão mais recente](https://media.githubusercontent.com/media/jpcostadev/huntLog/refs/heads/main/Instalador/HuntLog-Android-latest.apk)
+[Baixar a versão 1.3.34 para Android (APK)](https://media.githubusercontent.com/media/jpcostadev/huntLog/refs/heads/main/Instalador/HuntLog-Android-1.3.34.apk) · [Versão mais recente](https://media.githubusercontent.com/media/jpcostadev/huntLog/refs/heads/main/Instalador/HuntLog-Android-latest.apk)
 
 Abra o instalador no dispositivo e siga as instruções. O aplicativo também verifica atualizações diretamente neste repositório.
 
